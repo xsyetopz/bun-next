@@ -164,6 +164,49 @@ it("fs.openAsBlob", async () => {
   expect((await openAsBlob(import.meta.path)).size).toBe(statSync(import.meta.path).size);
 });
 
+describe("fs.openAsBlobSync", () => {
+  it("opens a path, a Buffer or a file: URL with the given type", async () => {
+    using dir = tempDir("open-as-blob-sync", { "data.txt": "hello openAsBlobSync" });
+    const file = join(String(dir), "data.txt");
+    for (const path of [file, Buffer.from(file), Bun.pathToFileURL(file)]) {
+      const blob = fs.openAsBlobSync(path, { type: "text/plain" });
+      expect([blob instanceof Blob, blob.size, blob.type, await blob.text()]).toEqual([
+        true,
+        20,
+        "text/plain",
+        "hello openAsBlobSync",
+      ]);
+    }
+  });
+
+  it("keeps the size the file had when it was opened", async () => {
+    using dir = tempDir("open-as-blob-sync", { "data.txt": "abc" });
+    const file = join(String(dir), "data.txt");
+    const blob = fs.openAsBlobSync(file);
+    writeFileSync(file, "abcdef");
+    expect(blob.size).toBe(3);
+  });
+
+  it("throws the stat error of a missing file", () => {
+    using dir = tempDir("open-as-blob-sync", {});
+    const missing = join(String(dir), "missing.txt");
+    expect(() => fs.openAsBlobSync(missing)).toThrow(
+      expect.objectContaining({ code: "ENOENT", syscall: "stat", path: missing }),
+    );
+    expect(() => openAsBlob(missing)).toThrow(expect.objectContaining({ code: "ENOENT" }));
+  });
+
+  it("validates its arguments synchronously", () => {
+    const invalid = expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" });
+    expect(() => fs.openAsBlobSync(1 as any)).toThrow(invalid);
+    expect(() => fs.openAsBlobSync(import.meta.path, null as any)).toThrow(invalid);
+    for (const type of [1, 0, false, null, NaN, {}]) {
+      expect(() => fs.openAsBlobSync(import.meta.path, { type } as any)).toThrow(invalid);
+      expect(() => openAsBlob(import.meta.path, { type } as any)).toThrow(invalid);
+    }
+  });
+});
+
 it("writing to 1, 2 are possible", () => {
   expect(fs.writeSync(1, Buffer.from("\nhello-stdout-test\n"))).toBe(19);
   expect(fs.writeSync(2, Buffer.from("\nhello-stderr-test\n"))).toBe(19);

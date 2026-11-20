@@ -43,7 +43,7 @@ Each module below also loads under the `bun:` prefix: `bun:fs` is `node:fs` and 
 
 ### [`node:fs`](https://nodejs.org/api/fs.html)
 
-🟢 Fully implemented. 98% of Node.js's test suite passes. `Stats` objects lack the `Temporal.Instant` getters (`atimeInstant` and friends).
+🟢 Fully implemented. 98% of Node.js's test suite passes. `Stats` objects lack the `Temporal.Instant` getters (`atimeInstant` and friends). A blob from `openAsBlob()`/`openAsBlobSync()` does not reject with `NotReadableError` when the file changes after it is opened, and `structuredClone()` copies it instead of throwing.
 
 ### [`node:http`](https://nodejs.org/api/http.html)
 

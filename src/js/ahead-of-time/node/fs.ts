@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/fs.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 391a2c740c17c25977978983b86383138f13e17050b6604e60e5d49a7aad8ea1.
+// Written against that file with the SHA-256 4cb5982ae39b0ee1aa50cc0b94c601a690567351c6229f511ae3631b54993b23.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:fs"
@@ -16,7 +16,10 @@ const {
   validateInteger,
   validateEncoding,
   getValidatedPath,
+  getValidatedFsPath,
   throwIfNullBytesInFileName,
+  validateObject,
+  validateString,
 } = require("internal/validators");
 
 const kEmptyObject = Object.freeze(Object.create(null));
@@ -68,8 +71,22 @@ function settleCallbackWithNull(promise: Promise<unknown>, callback: Callback) {
   );
 }
 
-function openAsBlob(path, options?) {
-  return Promise.$resolve(Bun.file(path, options));
+// The blob keeps the size the file had when it was opened, as in Node.js.
+function openFileAsBlob(path: PathLike, options: { type?: string }): Blob {
+  validateObject(options, "options");
+  const { type = "" } = options;
+  validateString(type, "options.type");
+  const validated = getValidatedFsPath(path);
+  const { size } = statSync(validated);
+  return Bun.file(validated, { type }).slice(0, size, type);
+}
+
+function openAsBlob(path: PathLike, options: { type?: string } = kEmptyObject) {
+  return Promise.$resolve(openFileAsBlob(path, options));
+}
+
+function openAsBlobSync(path: PathLike, options: { type?: string } = kEmptyObject) {
+  return openFileAsBlob(path, options);
 }
 
 interface WriteSyncErrorContext {
@@ -1434,6 +1451,7 @@ var exports = {
   writevSync,
   _toUnixTimestamp,
   openAsBlob,
+  openAsBlobSync,
   // Dir
   Dirent,
   opendir,
@@ -1573,6 +1591,7 @@ setName(writevSync, "writevSync");
 setName(fdatasync, "fdatasync");
 setName(fdatasyncSync, "fdatasyncSync");
 setName(openAsBlob, "openAsBlob");
+setName(openAsBlobSync, "openAsBlobSync");
 setName(opendir, "opendir");
 if (!(IS_COMPILED_AHEAD_OF_TIME && !CAN_LOAD_CODE_AT_RUN_TIME)) {
   setName(appendFileSync, "appendFileSync");

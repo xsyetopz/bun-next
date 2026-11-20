@@ -6,7 +6,10 @@ const {
   validateInteger,
   validateEncoding,
   getValidatedPath,
+  getValidatedFsPath,
   throwIfNullBytesInFileName,
+  validateObject,
+  validateString,
 } = require("internal/validators");
 
 const kEmptyObject = Object.freeze(Object.create(null));
@@ -57,8 +60,22 @@ function settleCallbackWithNull(promise, callback) {
   );
 }
 
-function openAsBlob(path, options) {
-  return Promise.$resolve(Bun.file(path, options));
+// The blob keeps the size the file had when it was opened, as in Node.js.
+function openFileAsBlob(path, options) {
+  validateObject(options, "options");
+  const { type = "" } = options;
+  validateString(type, "options.type");
+  path = getValidatedFsPath(path);
+  const { size } = statSync(path);
+  return Bun.file(path, { type }).slice(0, size, type);
+}
+
+function openAsBlob(path, options = kEmptyObject) {
+  return Promise.$resolve(openFileAsBlob(path, options));
+}
+
+function openAsBlobSync(path, options = kEmptyObject) {
+  return openFileAsBlob(path, options);
 }
 
 interface WriteSyncErrorContext {
@@ -1359,6 +1376,7 @@ var exports = {
   writevSync,
   _toUnixTimestamp,
   openAsBlob,
+  openAsBlobSync,
   // Dir
   Dirent,
   opendir,
@@ -1506,4 +1524,5 @@ setName(writevSync, "writevSync");
 setName(fdatasync, "fdatasync");
 setName(fdatasyncSync, "fdatasyncSync");
 setName(openAsBlob, "openAsBlob");
+setName(openAsBlobSync, "openAsBlobSync");
 setName(opendir, "opendir");
