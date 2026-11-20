@@ -205,6 +205,17 @@ describe("a literal bun: specifier that is not a builtin", () => {
     expect((await import("bun:fs/promises")).readFile).toBe(require("node:fs").promises.readFile);
   });
 
+  test("resolves the Node.js builtin that a computed specifier names", () => {
+    const prefixed = name => "bun:" + name;
+    expect({
+      requireResolve: require.resolve(prefixed("fs/promises")),
+      resolveSync: Bun.resolveSync(prefixed("fs"), import.meta.dir),
+      required: require(prefixed("path")) === require("node:path"),
+    }).toEqual({ requireResolve: "bun:fs/promises", resolveSync: "node:fs", required: true });
+    assert.throws(() => require.resolve(prefixed("missing")), { code: "MODULE_NOT_FOUND" });
+    assert.throws(() => require.resolve(prefixed("node:fs")), { code: "MODULE_NOT_FOUND" });
+  });
+
   // Source for a fixture. It gives "loaded", or the code of the error.
   const outcome = `
     async function outcome(load) {

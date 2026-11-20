@@ -5153,7 +5153,7 @@ impl VirtualMachine {
         // Bare/`node:` builtins: answer from the alias table before paying for UTF-8 copies and the resolver.
         // (Alias names are ASCII, so the Latin-1 bytes are the UTF-8 bytes whenever they can match.)
         if specifier.is_8bit() {
-            if let Some(hardcoded) = ModuleLoader::HardcodedModule::Alias::get(
+            if let Some(hardcoded) = ModuleLoader::HardcodedModule::Alias::get_or_bun_prefixed(
                 specifier.latin1(),
                 bun_ast::Target::Bun,
                 ModuleLoader::alias_cfg(),
@@ -5171,7 +5171,7 @@ impl VirtualMachine {
         let specifier_utf8 = specifier.to_utf8();
         let source_utf8 = source.to_utf8();
 
-        if let Some(hardcoded) = ModuleLoader::HardcodedModule::Alias::get(
+        if let Some(hardcoded) = ModuleLoader::HardcodedModule::Alias::get_or_bun_prefixed(
             specifier_utf8.slice(),
             bun_ast::Target::Bun,
             ModuleLoader::alias_cfg(),

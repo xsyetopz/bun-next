@@ -961,6 +961,13 @@ impl Alias {
         None
     }
 
+    /// [`Self::get`], also answering `bun:` + a bare Node builtin name with that builtin, for
+    /// specifiers the transpiler never saw (`require.resolve(name)`, `Bun.resolveSync`).
+    pub fn get_or_bun_prefixed(name: &[u8], target: Target, cfg: Cfg) -> Option<Alias> {
+        Self::get(name, target, cfg)
+            .or_else(|| Self::get(Self::bun_prefixed_builtin(name)?, target, cfg))
+    }
+
     /// Programs import `bun:fs` (#16883), so `bun:` + a bare Node builtin name means that builtin.
     #[inline]
     pub fn bun_prefixed_builtin(specifier: &[u8]) -> Option<&[u8]> {
