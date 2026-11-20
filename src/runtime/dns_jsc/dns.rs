@@ -382,6 +382,7 @@ impl QueryKind {
             Self::Record(RecordType::PTR) => b"queryPtr",
             Self::Record(RecordType::SOA) => b"querySoa",
             Self::Record(RecordType::SRV) => b"querySrv",
+            Self::Record(RecordType::TLSA) => b"queryTlsa",
             Self::Record(RecordType::TXT) => b"queryTxt",
         }
     }
@@ -1755,11 +1756,13 @@ bun_core::comptime_string_map! {
         b"A" => RecordType::A, b"AAAA" => RecordType::AAAA, b"ANY" => RecordType::ANY,
         b"CAA" => RecordType::CAA, b"CNAME" => RecordType::CNAME, b"MX" => RecordType::MX,
         b"NAPTR" => RecordType::NAPTR, b"NS" => RecordType::NS, b"PTR" => RecordType::PTR,
-        b"SOA" => RecordType::SOA, b"SRV" => RecordType::SRV, b"TXT" => RecordType::TXT,
+        b"SOA" => RecordType::SOA, b"SRV" => RecordType::SRV, b"TLSA" => RecordType::TLSA,
+        b"TXT" => RecordType::TXT,
         b"a" => RecordType::A, b"aaaa" => RecordType::AAAA, b"any" => RecordType::ANY,
         b"caa" => RecordType::CAA, b"cname" => RecordType::CNAME, b"mx" => RecordType::MX,
         b"naptr" => RecordType::NAPTR, b"ns" => RecordType::NS, b"ptr" => RecordType::PTR,
-        b"soa" => RecordType::SOA, b"srv" => RecordType::SRV, b"txt" => RecordType::TXT,
+        b"soa" => RecordType::SOA, b"srv" => RecordType::SRV, b"tlsa" => RecordType::TLSA,
+        b"txt" => RecordType::TXT,
     };
 }
 
@@ -2166,7 +2169,7 @@ impl Resolver {
                 None => {
                     return Err(global_this.throw_invalid_argument_property_value(
                         b"record",
-                        Some("one of: A, AAAA, ANY, CAA, CNAME, MX, NAPTR, NS, PTR, SOA, SRV, TXT"),
+                        Some("one of: A, AAAA, ANY, CAA, CNAME, MX, NAPTR, NS, PTR, SOA, SRV, TLSA, TXT"),
                         bun_string_jsc::create_utf8_for_js(global_this, label)?,
                     ));
                 }

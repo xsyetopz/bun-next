@@ -178,6 +178,38 @@ test.skipIf(isWindows)("dns.resolveNaptr accepts compressed replacement in RDATA
   ]);
 });
 
+describe.skipIf(isWindows)("dns.resolveTlsa", () => {
+  // certUsage=3 (DANE-EE), selector=1 (SPKI), match=1 (SHA-256), data=deadbeef.
+  const rdata = () => Buffer.from([0x03, 0x01, 0x01, 0xde, 0xad, 0xbe, 0xef]);
+  const expected = [{ certUsage: 3, selector: 1, match: 1, data: new Uint8Array([0xde, 0xad, 0xbe, 0xef]).buffer }];
+
+  test("callback form returns the records with an ArrayBuffer of data", async () => {
+    const records = await withCompressedAnswerServer(0x34, rdata, resolver => {
+      const { promise, resolve, reject } = Promise.withResolvers();
+      resolver.resolveTlsa("_443._tcp.example.test", (err, records) => (err ? reject(err) : resolve(records)));
+      return promise;
+    });
+    expect(records[0].data).toBeInstanceOf(ArrayBuffer);
+    expect(records).toEqual(expected);
+  });
+
+  test("promises form and resolve(name, 'TLSA') agree", async () => {
+    const [direct, viaResolve] = await withCompressedAnswerServer(0x34, rdata, resolver => {
+      const promises = new dns_promises.Resolver({ timeout: 1000, tries: 1 });
+      promises.setServers(resolver.getServers());
+      return Promise.all([promises.resolveTlsa("_443._tcp.example.test"), promises.resolve("x.example.test", "TLSA")]);
+    });
+    expect(direct).toEqual(expected);
+    expect(viaResolve).toEqual(expected);
+  });
+
+  test("is exported and promisifiable", () => {
+    expect(typeof dns.resolveTlsa).toBe("function");
+    expect(typeof dns_promises.resolveTlsa).toBe("function");
+    expect(util.promisify(dns.resolveTlsa)).toBe(dns.promises.resolveTlsa);
+  });
+});
+
 test("dns.resolveTxt (txt.socketify.dev)", () => {
   const { promise, resolve, reject } = Promise.withResolvers();
   dns.resolveTxt("txt.socketify.dev", (err, results) => {

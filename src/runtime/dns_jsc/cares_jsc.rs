@@ -8,7 +8,8 @@ use bun_core as bstr;
 use bun_core::CStrRef;
 use bun_jsc::bindgen::{JsLocal, JsScope};
 use bun_jsc::{
-    JSGlobalObject, JSPromiseStrong, JSValue, JsResult, StringJsc, SystemError, bun_string_jsc,
+    ArrayBuffer, JSGlobalObject, JSPromiseStrong, JSType, JSValue, JsResult, StringJsc,
+    SystemError, bun_string_jsc,
 };
 use c_ares::{RecordType, Reply};
 
@@ -74,6 +75,18 @@ pub(crate) fn reply_to_js(reply: &Reply, global: &JSGlobalObject) -> JsResult<JS
             let property = bstr::StringView::borrow_utf8(caa.property_bytes());
             object.put_may_be_index(global, &property, utf8(caa.value_bytes())?)?;
             Ok(object)
+        }),
+        Reply::Tlsa(tlsa) => array(global, tlsa.iter(), |tlsa| {
+            let data = ArrayBuffer::create::<{ JSType::ArrayBuffer }>(global, &tlsa.data)?;
+            Ok(object(
+                global,
+                &[
+                    (b"certUsage", number(tlsa.cert_usage)),
+                    (b"selector", number(tlsa.selector)),
+                    (b"match", number(tlsa.matching_type)),
+                    (b"data", data),
+                ],
+            ))
         }),
         Reply::Srv(srv) => records!(srv, |srv| Ok(object(
             global,

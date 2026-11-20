@@ -558,6 +558,12 @@ class Resolver {
     deliver(Resolver.#getResolver(this).resolveCaa(hostname), callback);
   }
 
+  resolveTlsa(this: object | undefined, hostname: string, callback: ResolveCallback) {
+    validateString(hostname, "name");
+    callback = validateCallback(arguments.length > 2 ? arguments[2] : callback);
+    deliver(Resolver.#getResolver(this).resolve(hostname, "TLSA"), callback);
+  }
+
   resolveTxt(this: object | undefined, hostname: string, callback: ResolveCallback) {
     callback = validateCallback(arguments.length > 2 ? arguments[2] : callback);
     deliver(Resolver.#getResolver(this).resolveTxt(hostname), callback);
@@ -596,6 +602,7 @@ var {
   resolvePtr,
   resolveSoa,
   resolveSrv,
+  resolveTlsa,
   reverse,
   resolveTxt,
 } = Resolver.prototype;
@@ -758,6 +765,9 @@ const promises = {
   resolveCaa(hostname: string) {
     return translateErrorCode(dns.resolveCaa(hostname));
   },
+  resolveTlsa(hostname: string) {
+    return translateErrorCode(dns.resolve(hostname, "TLSA"));
+  },
   resolveNs(hostname: string) {
     return translateErrorCode(dns.resolveNs(hostname));
   },
@@ -849,6 +859,10 @@ const promises = {
       return translateErrorCode(Resolver.#getResolver(this).resolveCaa(hostname));
     }
 
+    resolveTlsa(this: object | undefined, hostname: string) {
+      return translateErrorCode(Resolver.#getResolver(this).resolve(hostname, "TLSA"));
+    }
+
     resolveTxt(this: object | undefined, hostname: string) {
       return translateErrorCode(Resolver.#getResolver(this).resolveTxt(hostname));
     }
@@ -889,6 +903,7 @@ for (const [method, pMethod] of [
   [resolvePtr, promises.resolvePtr],
   [resolveSoa, promises.resolveSoa],
   [resolveSrv, promises.resolveSrv],
+  [resolveTlsa, promises.resolveTlsa],
   [resolveTxt, promises.resolveTxt],
   [resolveNaptr, promises.resolveNaptr],
 ]) {
@@ -921,6 +936,7 @@ export default {
   resolvePtr,
   resolveSoa,
   resolveSrv,
+  resolveTlsa,
   resolveTxt,
   resolveNaptr,
   promises,

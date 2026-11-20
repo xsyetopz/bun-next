@@ -118,6 +118,7 @@ pub enum RecordType {
     AAAA = 28,
     SRV = 33,
     NAPTR = 35,
+    TLSA = 52,
     ANY = 255,
     CAA = 257,
 }
@@ -333,6 +334,7 @@ pub enum Reply {
     Naptr(OwnedNaptrReply),
     Soa(OwnedSoaReply),
     Caa(OwnedCaaReply),
+    Tlsa(Vec<TlsaRecord>),
     Any(Vec<(RecordType, Reply)>),
     AddrInfo(OwnedAddrInfo),
     /// The aliases from `get_host_by_addr`, or the node and the service from `get_name_info`.
@@ -371,6 +373,7 @@ impl Reply {
             RecordType::NAPTR => parse!(Naptr, |out| ares_parse_naptr_reply(abuf, alen, out)),
             RecordType::SOA => parse!(Soa, |out| ares_parse_soa_reply(abuf, alen, out)),
             RecordType::CAA => parse!(Caa, |out| ares_parse_caa_reply(abuf, alen, out)),
+            RecordType::TLSA => Some(Self::Tlsa(TlsaRecord::parse(message)?)),
             RecordType::ANY => Some(Self::parse_any(message)?),
         })
     }
@@ -378,7 +381,7 @@ impl Reply {
     /// Fails with the last error if no type parses.
     fn parse_any(message: &[u8]) -> Result<Self, Error> {
         use RecordType::*;
-        let parsed = [A, AAAA, MX, NS, TXT, SRV, PTR, NAPTR, SOA, CAA]
+        let parsed = [A, AAAA, MX, NS, TXT, SRV, PTR, NAPTR, SOA, CAA, TLSA]
             .map(|record| (record, Self::parse(record, message)));
         if let [.., (_, Err(last))] = parsed
             && parsed.iter().all(|(_, reply)| reply.is_err())
@@ -766,7 +769,8 @@ impl<Q> Channel<Q> {
                 }
             };
         }
-        let callback: ares_callback = callback!(A NS CNAME SOA PTR MX TXT AAAA SRV NAPTR ANY CAA);
+        let callback: ares_callback =
+            callback!(A NS CNAME SOA PTR MX TXT AAAA SRV NAPTR TLSA ANY CAA);
         self.send(data, |raw, ctx| {
             if name.len() >= 1023 || bun_core::strings::contains_char(name, 0) {
                 return Err(Error::EBADNAME);
@@ -962,6 +966,57 @@ impl struct_ares_caa_reply<'_> {
     }
 }
 
+/// A TLSA record (RFC 6698), copied out of the message.
+pub struct TlsaRecord {
+    pub cert_usage: u8,
+    pub selector: u8,
+    pub matching_type: u8,
+    pub data: Box<[u8]>,
+}
+
+impl TlsaRecord {
+    /// The TLSA records of the answer section; c-ares has no `ares_parse_*_reply` for them.
+    fn parse(message: &[u8]) -> Result<Vec<Self>, Error> {
+        const ANSWER: c_int = 1;
+        const KEY: c_int = RecordType::TLSA as c_int * 100;
+        struct Record(*mut c_void);
+        impl Drop for Record {
+            fn drop(&mut self) {
+                // SAFETY: null or the record `ares_dns_parse` made; nothing borrows it after this.
+                unsafe { ares_dns_record_destroy(self.0) }
+            }
+        }
+        let mut record = Record(ptr::null_mut());
+        // SAFETY: c-ares FFI; it reads `message` and, on success, hands back a record we destroy.
+        let status = unsafe { ares_dns_parse(message.as_ptr(), message.len(), 0, &mut record.0) };
+        Error::check(status)?;
+        let record = record.0;
+        let mut found = Vec::new();
+        // SAFETY: c-ares FFI on the live record; every rr it lends lives as long as the record.
+        unsafe {
+            for index in 0..ares_dns_record_rr_cnt(record, ANSWER) {
+                let rr = ares_dns_record_rr_get_const(record, ANSWER, index);
+                if rr.is_null() || ares_dns_rr_get_type(rr) != RecordType::TLSA as c_int {
+                    continue;
+                }
+                let mut len = 0;
+                let data = ares_dns_rr_get_bin(rr, KEY + 4, &mut len);
+                found.push(Self {
+                    cert_usage: ares_dns_rr_get_u8(rr, KEY + 1),
+                    selector: ares_dns_rr_get_u8(rr, KEY + 2),
+                    matching_type: ares_dns_rr_get_u8(rr, KEY + 3),
+                    data: if data.is_null() {
+                        Box::default()
+                    } else {
+                        core::slice::from_raw_parts(data, len).into()
+                    },
+                });
+            }
+        }
+        Ok(found)
+    }
+}
+
 #[repr(C)]
 pub struct struct_ares_srv_reply<'a> {
     pub next: Option<&'a Self>,
@@ -1022,6 +1077,18 @@ pub struct struct_ares_soa_reply<'a> {
 }
 
 unsafe extern "C" {
+    fn ares_dns_parse(buf: *const u8, len: usize, flags: c_uint, record: *mut *mut c_void)
+    -> c_int;
+    fn ares_dns_record_destroy(record: *mut c_void);
+    fn ares_dns_record_rr_cnt(record: *const c_void, section: c_int) -> usize;
+    fn ares_dns_record_rr_get_const(
+        record: *const c_void,
+        section: c_int,
+        index: usize,
+    ) -> *const c_void;
+    fn ares_dns_rr_get_type(rr: *const c_void) -> c_int;
+    fn ares_dns_rr_get_u8(rr: *const c_void, key: c_int) -> u8;
+    fn ares_dns_rr_get_bin(rr: *const c_void, key: c_int, len: *mut usize) -> *const u8;
     fn ares_parse_a_reply(
         abuf: *const u8,
         alen: c_int,
