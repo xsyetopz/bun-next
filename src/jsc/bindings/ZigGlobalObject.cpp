@@ -3622,21 +3622,52 @@ JSValue GlobalObject_getGlobalThis(VM& vm, JSObject* globalObject)
     return uncheckedDowncast<Zig::GlobalObject>(globalObject)->globalThis();
 }
 
-// Not on the lookup table: JSC reads a PropertyCallback while it links code, when no JavaScript may run, and the class is JavaScript.
-JSC_DEFINE_CUSTOM_GETTER(jsQuotaExceededError, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue thisValue, PropertyName property))
+// Not on the lookup table: JSC reads a PropertyCallback while it links code, when no JavaScript may run, and these are JavaScript.
+// The first read replaces the accessor with a data property.
+static JSC::EncodedJSValue settleLazyGlobal(JSGlobalObject* globalObject, JSC::PropertyName property, JSValue value)
 {
-    auto& vm = JSC::getVM(lexicalGlobalObject);
-    auto scope = DECLARE_THROW_SCOPE(vm);
-    auto* globalObject = defaultGlobalObject(lexicalGlobalObject);
-    JSValue constructor = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalDomexception, "QuotaExceededError", "QuotaExceededError"_s);
-    RETURN_IF_EXCEPTION(scope, {});
-    globalObject->putDirect(vm, property, constructor, static_cast<unsigned>(PropertyAttribute::DontEnum));
-    return JSValue::encode(constructor);
+    globalObject->putDirect(globalObject->vm(), property, value, static_cast<unsigned>(PropertyAttribute::DontEnum));
+    return JSValue::encode(value);
 }
 
-JSC_DEFINE_CUSTOM_SETTER(setJsQuotaExceededError, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue thisValue, EncodedJSValue value, PropertyName property))
+JSC_DEFINE_CUSTOM_GETTER(jsQuotaExceededError, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue, PropertyName property))
 {
-    defaultGlobalObject(lexicalGlobalObject)->putDirect(JSC::getVM(lexicalGlobalObject), property, JSValue::decode(value), static_cast<unsigned>(PropertyAttribute::DontEnum));
+    auto scope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
+    auto* globalObject = defaultGlobalObject(lexicalGlobalObject);
+    JSValue value = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalDomexception, "QuotaExceededError", "QuotaExceededError"_s);
+    RETURN_IF_EXCEPTION(scope, {});
+    return settleLazyGlobal(globalObject, property, value);
+}
+
+JSC_DEFINE_CUSTOM_GETTER(jsStorage, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue, PropertyName property))
+{
+    auto scope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
+    auto* globalObject = defaultGlobalObject(lexicalGlobalObject);
+    JSValue value = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalWebstorage, "Storage", "Storage"_s);
+    RETURN_IF_EXCEPTION(scope, {});
+    return settleLazyGlobal(globalObject, property, value);
+}
+
+JSC_DEFINE_CUSTOM_GETTER(jsSessionStorage, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue, PropertyName property))
+{
+    auto scope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
+    auto* globalObject = defaultGlobalObject(lexicalGlobalObject);
+    JSValue value = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalWebstorage, "sessionStorage", "sessionStorage"_s);
+    RETURN_IF_EXCEPTION(scope, {});
+    globalObject->putDirect(globalObject->vm(), property, value);
+    return JSValue::encode(value);
+}
+
+JSC_DEFINE_CUSTOM_SETTER(setJsLazyGlobal, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue, EncodedJSValue value, PropertyName property))
+{
+    settleLazyGlobal(defaultGlobalObject(lexicalGlobalObject), property, JSValue::decode(value));
+    return true;
+}
+
+JSC_DEFINE_CUSTOM_SETTER(setJsEnumerableLazyGlobal, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue, EncodedJSValue value, PropertyName property))
+{
+    auto* globalObject = defaultGlobalObject(lexicalGlobalObject);
+    globalObject->putDirect(globalObject->vm(), property, JSValue::decode(value));
     return true;
 }
 
@@ -3801,7 +3832,9 @@ void GlobalObject::addBuiltinGlobals(JSC::VM& vm)
     // TODO: this should be usable on the lookup table. it crashed las time i tried it
     putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "onmessage"_s), JSC::CustomGetterSetter::create(vm, globalOnMessage, setGlobalOnMessage), 0);
     putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "onerror"_s), JSC::CustomGetterSetter::create(vm, globalOnError, setGlobalOnError), 0);
-    putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "QuotaExceededError"_s), JSC::CustomGetterSetter::create(vm, jsQuotaExceededError, setJsQuotaExceededError), PropertyAttribute::DontEnum | PropertyAttribute::CustomValue);
+    putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "QuotaExceededError"_s), JSC::CustomGetterSetter::create(vm, jsQuotaExceededError, setJsLazyGlobal), PropertyAttribute::DontEnum | PropertyAttribute::CustomValue);
+    putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "Storage"_s), JSC::CustomGetterSetter::create(vm, jsStorage, setJsLazyGlobal), PropertyAttribute::DontEnum | PropertyAttribute::CustomValue);
+    putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "sessionStorage"_s), JSC::CustomGetterSetter::create(vm, jsSessionStorage, setJsEnumerableLazyGlobal), static_cast<unsigned>(PropertyAttribute::CustomValue));
 
     // ----- Extensions to Built-in objects -----
 

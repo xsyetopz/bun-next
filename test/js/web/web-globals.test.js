@@ -864,3 +864,67 @@ describe("QuotaExceededError", () => {
     expect(error).toMatchObject({ name: "QuotaExceededError", code: 22, quota: null, requested: null });
   });
 });
+
+describe("Web Storage", () => {
+  test("Storage cannot be constructed in userland", () => {
+    expect(() => new Storage()).toThrow(expect.objectContaining({ code: "ERR_ILLEGAL_CONSTRUCTOR" }));
+    expect(() => Storage.prototype.length).toThrow(TypeError);
+    expect(() => Storage.prototype.getItem.call({}, "x")).toThrow(TypeError);
+    expect(Object.getOwnPropertyDescriptor(globalThis, "Storage").enumerable).toBe(false);
+    expect(Object.keys(globalThis)).toContain("sessionStorage");
+  });
+
+  test("sessionStorage holds strings by method and by property", () => {
+    sessionStorage.clear();
+    expect(sessionStorage).toBeInstanceOf(Storage);
+    sessionStorage.foo = "bar";
+    sessionStorage.setItem("n", 1);
+    sessionStorage[0] = {};
+    expect({ ...sessionStorage }).toEqual({ 0: "[object Object]", foo: "bar", n: "1" });
+    expect([
+      sessionStorage.length,
+      sessionStorage.getItem("n"),
+      sessionStorage.getItem("none"),
+      sessionStorage.none,
+    ]).toEqual([3, "1", null, undefined]);
+    expect(["foo" in sessionStorage, "none" in sessionStorage, sessionStorage.key(-1), sessionStorage.key(3)]).toEqual([
+      true,
+      false,
+      null,
+      null,
+    ]);
+    delete sessionStorage.foo;
+    sessionStorage.removeItem("n");
+    expect(Object.keys(sessionStorage)).toEqual(["0"]);
+    expect(Bun.inspect(sessionStorage)).toBe("Storage { '0': '[object Object]' }");
+    const symbol = Symbol();
+    sessionStorage[symbol] = 1;
+    expect([sessionStorage[symbol], Object.keys(sessionStorage)]).toEqual([1, ["0"]]);
+    sessionStorage.clear();
+    expect(sessionStorage.length).toBe(0);
+  });
+
+  test("Storage methods check their arguments", () => {
+    expect(() => sessionStorage.getItem()).toThrow(
+      expect.objectContaining({
+        code: "ERR_MISSING_ARGS",
+        message: "Failed to execute 'getItem' on 'Storage': 1 argument required",
+      }),
+    );
+    expect(() => sessionStorage.setItem("a")).toThrow(
+      expect.objectContaining({
+        code: "ERR_MISSING_ARGS",
+        message: "Failed to execute 'setItem' on 'Storage': 2 arguments required",
+      }),
+    );
+  });
+
+  test("sessionStorage holds at most 10 MB", () => {
+    sessionStorage.clear();
+    sessionStorage[Buffer.alloc(5 * 1024 * 1024, "a").toString()] = "";
+    expect(() => {
+      sessionStorage.anything = "should fail";
+    }).toThrow(expect.objectContaining({ name: "QuotaExceededError", code: 22, quota: null }));
+    sessionStorage.clear();
+  });
+});

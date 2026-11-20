@@ -443,7 +443,7 @@ The following list covers the globals implemented by Node.js and Bun's compatibi
 
 ### [`Storage`](https://developer.mozilla.org/en-US/docs/Web/API/Storage)
 
-🔴 Not implemented. Bun has no `Storage`, `localStorage` or `sessionStorage` globals.
+🟡 `Storage` and an in-memory `sessionStorage` are implemented, with Node.js's 10 MB quota. `localStorage` is not implemented: Bun has no `--localstorage-file` flag. `Object.keys(sessionStorage)` leaves out items named after a `Storage` method, such as `"key"`.
 
 ### [`SubtleCrypto`](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto)
 

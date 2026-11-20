@@ -6,6 +6,8 @@ import {
   framesOfModuleGraphsCell,
   functionOfTimersPromisesCell,
   quotaExceededErrorCell,
+  sessionStorageCell,
+  storageCell,
   moduleGraphsCell,
   overriddenMainCell,
   performanceTimingCell,
@@ -83,6 +85,18 @@ const answersFunctionOfTimersPromises = (timer: string) =>
     uses: { this: [b.returnedFrom(functionOfTimersPromisesCell(timer))] },
     implementation: b.generic,
   }) satisfies b.GetterField;
+
+const lazyGlobal = (name: string, module: string, cell: string) => [
+  b.static(name, {
+    this: b.any,
+    getter: b.any,
+    capability: "js",
+    throws: true,
+    uses: { this: [b.returnedFrom(cell)] },
+    implementation: b.generic,
+  }),
+  b.extend(name, { loads: [{ module, exports: [b.exportRead(name, b.keptIn(cell))] }] }),
+];
 
 const timerCancellation = {
   args: { timer: b.any.optional },
@@ -1936,23 +1950,10 @@ export default b.declarations(
   b.method("AbortSignal.prototype.onabort", eventHandlerAttributeKeptIn("AbortSignal.onabort", receiver)),
   b.static("onerror", b.property(b.any, { setter: eventHandlerAttribute(globalObject).setter })),
   b.static("onmessage", b.property(b.any, { setter: eventHandlerAttribute(globalObject).setter })),
-  // ZigGlobalObject.cpp: the first read loads internal/domexception and replaces the accessor with a data property.
-  b.static("QuotaExceededError", {
-    this: b.any,
-    getter: b.any,
-    capability: "js",
-    throws: true,
-    uses: { this: [b.returnedFrom(quotaExceededErrorCell)] },
-    implementation: b.generic,
-  }),
-  b.extend("QuotaExceededError", {
-    loads: [
-      {
-        module: "internal/domexception",
-        exports: [b.exportRead("QuotaExceededError", b.keptIn(quotaExceededErrorCell))],
-      },
-    ],
-  }),
+  // ZigGlobalObject.cpp: the first read loads the module and replaces the accessor with a data property.
+  ...lazyGlobal("QuotaExceededError", "internal/domexception", quotaExceededErrorCell),
+  ...lazyGlobal("Storage", "internal/webstorage", storageCell),
+  ...lazyGlobal("sessionStorage", "internal/webstorage", sessionStorageCell),
   b.fn("addEventListener", listenerRegistration(globalObject)),
   b.fn("removeEventListener", listenerRemoval),
   // Whatever it is called on, the target is the global object.
