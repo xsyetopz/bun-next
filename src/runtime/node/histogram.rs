@@ -45,6 +45,7 @@ struct State {
     previous_ns: u64,
     /// How many times values were removed.
     reset_count: u64,
+    ewma: bun_histogram::Ewma,
 }
 
 /// An `ELDHistogram`, as the timer that samples the event loop sees it.
@@ -59,10 +60,15 @@ impl State {
     /// Records the time since the last call, if there was one.
     fn record_delta(&mut self, now_ns: u64) {
         if self.previous_ns > 0 {
-            self.histogram
-                .record(now_ns.saturating_sub(self.previous_ns));
+            self.record(now_ns.saturating_sub(self.previous_ns));
         }
         self.previous_ns = now_ns;
+    }
+
+    fn record(&mut self, value: u64) {
+        if self.histogram.record(value) {
+            self.ewma.record(value);
+        }
     }
 
     fn add(&mut self, other: &State) {
@@ -153,12 +159,13 @@ impl Histogram {
     }
 }
 
-fn new_state(histogram: bun_histogram::Histogram) -> (State, Arc<Size>) {
+fn new_state(histogram: bun_histogram::Histogram, ewma: bun_histogram::Ewma) -> (State, Arc<Size>) {
     let size = Arc::new(Size(AtomicUsize::new(histogram.memory_size())));
     let state = State {
         histogram,
         previous_ns: 0,
         reset_count: 0,
+        ewma,
     };
     (state, size)
 }
@@ -168,8 +175,13 @@ pub(crate) fn create_recordable<'a>(
     lowest: u64,
     highest: u64,
     figures: u32,
+    half_life: f64,
+    threshold: f64,
 ) -> Option<JsWrapper<'a, Histogram>> {
-    let (state, size) = new_state(bun_histogram::Histogram::new(lowest, highest, figures)?);
+    let histogram = bun_histogram::Histogram::new(lowest, highest, figures)?;
+    // `as` saturates.
+    let ewma = bun_histogram::Ewma::new(half_life, threshold as i64);
+    let (state, size) = new_state(histogram, ewma);
     let histogram = Histogram {
         counts: RefCell::new(Counts::Own(state)),
         size,
@@ -181,7 +193,7 @@ pub(crate) fn create_recordable<'a>(
 pub(crate) fn create_interval<'a>(heap: &JsHeap<'a>, resolution: f64) -> JsWrapper<'a, Histogram> {
     // https://github.com/nodejs/node/blob/v26.3.0/src/node_perf.cc#L298
     let histogram = bun_histogram::Histogram::new(1000, i64::MAX as u64, 3);
-    let (state, size) = new_state(histogram.expect("a valid range"));
+    let (state, size) = new_state(histogram.expect("a valid range"), Default::default());
     let state = Arc::new(Guarded::new(state));
     let interval = Rc::new(Interval {
         state: Arc::clone(&state),
@@ -233,6 +245,39 @@ impl Histogram {
 
     pub(crate) fn get_kurtosis(&self) -> f64 {
         self.read(|histogram| histogram.kurtosis())
+    }
+
+    pub(crate) fn get_ewma_mean(&self) -> f64 {
+        self.read_state(|state| state.ewma.mean())
+    }
+
+    pub(crate) fn get_ewma_stddev(&self) -> f64 {
+        self.read_state(|state| state.ewma.stddev())
+    }
+
+    pub(crate) fn get_ewma_error_rate(&self) -> f64 {
+        self.read_state(|state| state.ewma.error_rate())
+    }
+
+    /// How many times faster than allowed the error budget of `slo_target`, a share of the values that are not
+    /// above the threshold, is spent.
+    pub(crate) fn burn_rate<'a>(
+        &self,
+        heap: &JsHeap<'a>,
+        slo_target: f64,
+    ) -> bindgen::Result<'a, f64> {
+        if !(slo_target > 0.0 && slo_target < 1.0) {
+            let options = OutOfRangeOptions {
+                field_name: b"sloTarget",
+                msg: b"> 0 && < 1",
+                ..Default::default()
+            };
+            return Err(heap.error_with_code(
+                ErrorCode::OUT_OF_RANGE,
+                format_args!("{}", out_of_range(NodeNumber(slo_target), options)),
+            ));
+        }
+        Ok(self.get_ewma_error_rate() / (1.0 - slo_target))
     }
 
     fn percentiles_map<'a>(
@@ -344,6 +389,7 @@ impl Histogram {
                     histogram,
                     previous_ns: 0,
                     reset_count: 0,
+                    ewma: Default::default(),
                 };
                 Ok(Self::detached(state).into_js(heap))
             }
@@ -354,26 +400,34 @@ impl Histogram {
     pub(crate) fn reset(&self) {
         self.with(|state| {
             state.histogram.reset();
+            state.ewma.reset();
             state.previous_ns = 0;
             state.reset_count += 1;
         });
     }
 
     pub(crate) fn to_json<'a>(&self, heap: &JsHeap<'a>) -> bindgen::Result<'a, HistogramJSON<'a>> {
-        let (json, percentiles) = self.read(|histogram| {
-            let json = HistogramJSON {
-                count: histogram.count(),
-                min: histogram.min(),
-                max: histogram.max(),
-                mean: histogram.mean(),
-                exceeds: histogram.exceeds(),
-                stddev: histogram.stddev(),
-                skewness: histogram.skewness(),
-                kurtosis: histogram.kurtosis(),
-                percentiles: JsLocal::NULL,
-            };
-            (json, histogram.percentiles())
-        });
+        let (json, percentiles) = self.read_state(
+            |State {
+                 histogram, ewma, ..
+             }| {
+                let json = HistogramJSON {
+                    count: histogram.count(),
+                    min: histogram.min(),
+                    max: histogram.max(),
+                    mean: histogram.mean(),
+                    exceeds: histogram.exceeds(),
+                    stddev: histogram.stddev(),
+                    skewness: histogram.skewness(),
+                    kurtosis: histogram.kurtosis(),
+                    ewma_mean: ewma.mean(),
+                    ewma_stddev: ewma.stddev(),
+                    ewma_error_rate: ewma.error_rate(),
+                    percentiles: JsLocal::NULL,
+                };
+                (json, histogram.percentiles())
+            },
+        );
         let percentiles = percentiles
             .into_iter()
             .map(|(percentile, at)| (double(percentile).to_string(), at));
@@ -399,7 +453,7 @@ impl Histogram {
             validators::validate_integer(cx.global(), val, "val", Some(0), Some(MAX_SAFE_INTEGER))?
                 as u64
         };
-        let (_, grown) = self.with(|state| state.histogram.record(value));
+        let (_, grown) = self.with(|state| state.record(value));
         Self::report_growth(&cx.heap, this_value, grown);
         Ok(())
     }
@@ -433,7 +487,11 @@ impl Histogram {
                 validators::validate_integer(global, interval, "expectedInterval", Some(1), None)?;
             (value as u64, interval as u64)
         };
-        let (_, grown) = self.with(|state| state.histogram.record_corrected(value, interval));
+        let (_, grown) = self.with(|state| {
+            if state.histogram.record_corrected(value, interval) {
+                state.ewma.record(value);
+            }
+        });
         Self::report_growth(&cx.heap, this_value, grown);
         Ok(())
     }

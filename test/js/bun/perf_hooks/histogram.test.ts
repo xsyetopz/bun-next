@@ -202,6 +202,72 @@ describe("Histogram", () => {
     });
   });
 
+  describe("EWMA", () => {
+    test("is off without a halfLife", () => {
+      const h = createHistogram({ threshold: 1 }) as any;
+      for (const value of [10, 20]) h.record(value);
+      assert.deepStrictEqual([h.ewmaMean, h.ewmaStddev, h.ewmaErrorRate, h.burnRate(0.75)], [0, 0, 0, 0]);
+    });
+
+    test("moves the mean and variance by 1 - 2 ** (-1 / halfLife)", () => {
+      const h = createHistogram({ halfLife: 1 }) as any;
+      h.record(10);
+      assert.deepStrictEqual([h.ewmaMean, h.ewmaStddev], [10, 0]);
+      h.record(20);
+      assert.deepStrictEqual([h.ewmaMean, h.ewmaStddev, h.ewmaErrorRate], [15, 5, 0]);
+    });
+
+    test("tracks the share of values above the threshold", () => {
+      const h = createHistogram({ halfLife: 1, threshold: 15 }) as any;
+      h.record(10);
+      assert.strictEqual(h.ewmaErrorRate, 0);
+      h.record(20);
+      assert.strictEqual(h.ewmaErrorRate, 0.5);
+      assert.strictEqual(h.burnRate(0.75), 2);
+    });
+
+    test("skips values out of range and counts recordCorrected values once", () => {
+      const h = createHistogram({ halfLife: 1, highest: 100 }) as any;
+      h.record(10);
+      h.record(1000);
+      assert.strictEqual(h.ewmaMean, 10);
+      h.recordCorrected(20, 5);
+      assert.strictEqual(h.ewmaMean, 15);
+    });
+
+    test("reset forgets the values and keeps the halfLife", () => {
+      const h = createHistogram({ halfLife: 1, threshold: 1 }) as any;
+      h.record(10);
+      h.reset();
+      assert.deepStrictEqual([h.ewmaMean, h.ewmaStddev, h.ewmaErrorRate], [0, 0, 0]);
+      h.record(4);
+      h.record(8);
+      assert.deepStrictEqual([h.ewmaMean, h.ewmaErrorRate], [6, 1]);
+    });
+
+    test("snapshot keeps it and diff does not have one", () => {
+      const h = createHistogram({ halfLife: 1 }) as any;
+      h.record(10);
+      const earlier = h.snapshot();
+      h.record(20);
+      assert.strictEqual(h.snapshot().ewmaMean, 15);
+      assert.strictEqual(earlier.ewmaMean, 10);
+      assert.strictEqual(h.diff(earlier).ewmaMean, 0);
+    });
+
+    test("validates the options and sloTarget", () => {
+      assert.throws(() => createHistogram({ halfLife: "1" } as any), { code: "ERR_INVALID_ARG_TYPE" });
+      assert.throws(() => createHistogram({ halfLife: -1 } as any), { code: "ERR_OUT_OF_RANGE" });
+      assert.throws(() => createHistogram({ threshold: 1n } as any), { code: "ERR_INVALID_ARG_TYPE" });
+      assert.throws(() => createHistogram({ threshold: -1 } as any), { code: "ERR_OUT_OF_RANGE" });
+      const h = createHistogram() as any;
+      for (const sloTarget of [0, 1, NaN]) {
+        assert.throws(() => h.burnRate(sloTarget), { code: "ERR_OUT_OF_RANGE" });
+      }
+      assert.throws(() => h.burnRate("0.5"), { code: "ERR_INVALID_ARG_TYPE" });
+    });
+  });
+
   describe("subtract", () => {
     test("removes counts slot by slot and clamps at zero", () => {
       const h = createHistogram();
@@ -743,11 +809,14 @@ describe("Histogram", () => {
         stddev: 8.16496580927726,
         skewness: 0,
         kurtosis: 0,
+        ewmaMean: 0,
+        ewmaStddev: 0,
+        ewmaErrorRate: 0,
         percentiles: { 0: 10, 50: 20, 75: 30, 100: 30 },
       });
       assert.strictEqual(
         JSON.stringify(h),
-        '{"count":3,"min":10,"max":30,"mean":20,"exceeds":0,"stddev":8.16496580927726,"skewness":0,"kurtosis":0,"percentiles":{"0":10,"50":20,"75":30,"100":30}}',
+        '{"count":3,"min":10,"max":30,"mean":20,"exceeds":0,"stddev":8.16496580927726,"skewness":0,"kurtosis":0,"ewmaMean":0,"ewmaStddev":0,"ewmaErrorRate":0,"percentiles":{"0":10,"50":20,"75":30,"100":30}}',
       );
     });
 
@@ -1565,12 +1634,16 @@ describe("Histogram", () => {
       assert.deepStrictEqual(members(Base), [
         "Histogram/0",
         "[nodejs.util.inspect.custom]/2",
+        "burnRate/1",
         "ccdf/1",
         "cdf/1",
         "countAt/1",
         "diff/1",
         "get count",
         "get countBigInt",
+        "get ewmaErrorRate",
+        "get ewmaMean",
+        "get ewmaStddev",
         "get exceeds",
         "get exceedsBigInt",
         "get kurtosis",

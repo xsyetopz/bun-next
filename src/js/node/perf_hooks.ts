@@ -7,7 +7,7 @@ const {
   PerformanceNodeEntry,
   kEmptyObject,
 } = require("internal/shared");
-const { validateFunction, validateInteger, validateObject } = require("internal/validators");
+const { validateFunction, validateInteger, validateNumber, validateObject } = require("internal/validators");
 
 const createRecordable = $bindgen("histogram.bind.ts", "createRecordable");
 const createInterval = $bindgen("histogram.bind.ts", "createInterval");
@@ -316,10 +316,16 @@ export default {
   },
   // https://github.com/nodejs/node/blob/v26.3.0/lib/internal/histogram.js#L367
   createHistogram: function createHistogram(
-    options: { lowest?: number | bigint; highest?: number | bigint; figures?: number } = kEmptyObject,
+    options: {
+      lowest?: number | bigint;
+      highest?: number | bigint;
+      figures?: number;
+      halfLife?: number;
+      threshold?: number;
+    } = kEmptyObject,
   ) {
     validateObject(options, "options");
-    const { lowest = 1, highest = NumberMAX_SAFE_INTEGER, figures = 3 } = options;
+    const { lowest = 1, highest = NumberMAX_SAFE_INTEGER, figures = 3, halfLife = 0, threshold = 0 } = options;
     if (typeof lowest !== "bigint") {
       validateInteger(lowest, "options.lowest", 1, NumberMAX_SAFE_INTEGER);
     } else if (lowest < 1n || lowest > kInt64Max) {
@@ -333,8 +339,12 @@ export default {
       throw $ERR_OUT_OF_RANGE("options.highest", `<= ${kInt64Max}n`, highest);
     }
     validateInteger(figures, "options.figures", 1, 5);
+    validateNumber(halfLife, "options.halfLife");
+    if (halfLife < 0) throw $ERR_OUT_OF_RANGE("options.halfLife", ">= 0", halfLife);
+    validateNumber(threshold, "options.threshold");
+    if (threshold < 0) throw $ERR_OUT_OF_RANGE("options.threshold", ">= 0", threshold);
 
-    const histogram = createRecordable(lowest, highest, figures);
+    const histogram = createRecordable(lowest, highest, figures, halfLife, threshold);
     if (histogram === null) {
       throw $ERR_INVALID_ARG_VALUE("options.lowest", lowest, `is too large for ${figures} significant figures`);
     }

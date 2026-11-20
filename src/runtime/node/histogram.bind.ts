@@ -24,6 +24,9 @@ export const HistogramJSON = b.dictionary({
   stddev: b.f64,
   skewness: b.f64,
   kurtosis: b.f64,
+  ewmaMean: b.f64,
+  ewmaStddev: b.f64,
+  ewmaErrorRate: b.f64,
   percentiles: b.any,
 });
 
@@ -46,6 +49,19 @@ export const Histogram = b.class({
     stddev: { getter: b.f64 },
     skewness: { getter: b.f64 },
     kurtosis: { getter: b.f64 },
+    /** 0 unless the histogram was created with a `halfLife`. */
+    ewmaMean: { getter: b.f64 },
+    ewmaStddev: { getter: b.f64 },
+    /** 0 unless the histogram was created with a `halfLife` and a `threshold`. */
+    ewmaErrorRate: { getter: b.f64 },
+    /** How many times faster than `1 - sloTarget` allows the values pass the threshold. */
+    burnRate: {
+      args: { sloTarget: b.f64 },
+      expected: { sloTarget: ["number"] },
+      returns: b.f64,
+      capability: "heap",
+      throws: true,
+    },
     percentile: { ...percentile, returns: b.u64 },
     percentileBigInt: { ...percentile, returns: b.u64.asBigInt, rustName: "percentile" },
     /** A `Map`. */
@@ -105,7 +121,7 @@ export const ELDHistogram = b.class({
 
 /** `null` if no histogram has this range and precision. */
 export const createRecordable = b.fn({
-  args: { lowest: b.u64.allowBigInt, highest: b.u64.allowBigInt, figures: b.u32 },
+  args: { lowest: b.u64.allowBigInt, highest: b.u64.allowBigInt, figures: b.u32, halfLife: b.f64, threshold: b.f64 },
   returns: RecordableHistogram.nullable,
   capability: "heap",
 });

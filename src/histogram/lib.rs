@@ -12,7 +12,7 @@
 //! the lower half is what the earlier buckets cover. So a value is known to within one slot, and every result
 //! is an edge or the middle of a slot.
 //!
-//! Nothing here depends on the platform's `libm`: the only float operations are the IEEE-exact ones.
+//! Nothing in the histogram depends on the platform's `libm`: the only float operations are the IEEE-exact ones.
 
 #![forbid(unsafe_code)]
 #![deny(
@@ -22,6 +22,9 @@
     clippy::panic,
     clippy::unreachable
 )]
+
+mod ewma;
+pub use ewma::Ewma;
 
 /// What an empty histogram reports as its minimum.
 const EMPTY_MIN: u64 = i64::MAX as u64;
