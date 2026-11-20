@@ -2,7 +2,13 @@
 
 // This is a stub! None of this is actually implemented yet.
 const { hideFromStack, throwNotImplemented } = require("internal/shared");
-const { validateFunction, validateObject, validateString, validateOneOf } = require("internal/validators");
+const {
+  validateFunction,
+  validateNumber,
+  validateObject,
+  validateString,
+  validateOneOf,
+} = require("internal/validators");
 const { kEmptyObject } = require("internal/shared");
 const { isDataView, isAnyArrayBuffer } = require("node:util/types");
 const jsc: typeof import("bun:jsc") = require("bun:jsc");
@@ -405,6 +411,50 @@ function writeHeapSnapshot(path, _options) {
 
   return path;
 }
+const startCPUProfiler = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_startCPUProfiler", 0);
+const stopCPUProfiler = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_stopCPUProfiler", 0);
+const setCPUSamplingInterval = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_setCPUSamplingInterval", 1);
+const isCPUProfilerRunning = $newCppFunction("JSInspectorProfiler.cpp", "jsFunction_isCPUProfilerRunning", 0);
+
+// JSC has one sampler per thread, so handles share it: stopping one returns everything sampled since the sampler
+// last started, and the sampler restarts for the handles still open.
+let openCpuProfiles = 0;
+
+class SyncCPUProfileHandle {
+  #stopped = false;
+
+  stop() {
+    if (this.#stopped) return;
+    this.#stopped = true;
+    openCpuProfiles--;
+    const profile = isCPUProfilerRunning() ? stopCPUProfiler() : "";
+    if (openCpuProfiles > 0) startCPUProfiler();
+    return profile;
+  }
+
+  [Symbol.dispose]() {
+    this.stop();
+  }
+}
+
+function startCpuProfile(options = kEmptyObject) {
+  validateObject(options, "options");
+  const { sampleInterval, maxBufferSize } = options;
+  let samplingIntervalMicros = 0;
+  if (sampleInterval !== undefined) {
+    validateNumber(sampleInterval, "options.sampleInterval", 0, 0x7fffffff / 1000);
+    samplingIntervalMicros = Math.floor(sampleInterval * 1000) || (sampleInterval > 0 ? 1 : 0);
+  }
+  // JSC keeps every sample, so the buffer size is only validated.
+  if (maxBufferSize !== undefined) validateNumber(maxBufferSize, "options.maxBufferSize", 1, 0xffff_ffff);
+  if (!isCPUProfilerRunning()) {
+    if (samplingIntervalMicros > 0) setCPUSamplingInterval(samplingIntervalMicros);
+    startCPUProfiler();
+  }
+  openCpuProfiles++;
+  return new SyncCPUProfileHandle();
+}
+
 function setHeapSnapshotNearHeapLimit() {
   notimpl("setHeapSnapshotNearHeapLimit");
 }
@@ -462,6 +512,7 @@ const promiseHooks = {
 
 export default {
   cachedDataVersionTag,
+  startCpuProfile,
   GCProfiler,
   isStringOneByteRepresentation,
   getHeapSnapshot,

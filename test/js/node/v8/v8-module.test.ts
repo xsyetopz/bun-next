@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { bunEnv, bunExe } from "harness";
 import { inspect } from "node:util";
-import { GCProfiler, isStringOneByteRepresentation, queryObjects } from "node:v8";
+import { GCProfiler, isStringOneByteRepresentation, queryObjects, startCpuProfile } from "node:v8";
 import { runInNewContext } from "node:vm";
 
 describe("v8.isStringOneByteRepresentation", () => {
@@ -199,6 +199,57 @@ describe("v8.GCProfiler", () => {
       stderr: "",
       exitCode: 0,
     });
+  });
+});
+
+describe("v8.startCpuProfile", () => {
+  function spin(name: string) {
+    const fn = {
+      [name]() {
+        let x = 0;
+        const end = performance.now() + 50;
+        while (performance.now() < end) x += Math.sqrt(x + 1);
+        return x;
+      },
+    }[name];
+    return fn();
+  }
+
+  test("stop() returns a Chrome CPU profile once", () => {
+    const handle = startCpuProfile({ sampleInterval: 1 });
+    spin("cpuProfiledFunction");
+    const profile = JSON.parse(handle.stop()!);
+    expect({
+      keys: Object.keys(profile).sort(),
+      sampled: profile.nodes.some(node => node.callFrame.functionName === "cpuProfiledFunction"),
+      again: handle.stop(),
+    }).toEqual({
+      keys: ["endTime", "nodes", "samples", "startTime", "timeDeltas"],
+      sampled: true,
+      again: undefined,
+    });
+  });
+
+  test("overlapping handles each get a profile and using disposes", () => {
+    const outer = startCpuProfile();
+    {
+      using inner = startCpuProfile();
+      spin("firstOverlap");
+    }
+    spin("afterInner");
+    const profile = JSON.parse(outer.stop()!);
+    expect(profile.nodes.some(node => node.callFrame.functionName === "afterInner")).toBe(true);
+  });
+
+  test("validates options like node", () => {
+    const codes = [{ sampleInterval: -1 }, { maxBufferSize: 0 }, { sampleInterval: "1" }, null].map(options => {
+      try {
+        startCpuProfile(options as any);
+      } catch (error) {
+        return (error as any).code;
+      }
+    });
+    expect(codes).toEqual(["ERR_OUT_OF_RANGE", "ERR_OUT_OF_RANGE", "ERR_INVALID_ARG_TYPE", "ERR_INVALID_ARG_TYPE"]);
   });
 });
 
