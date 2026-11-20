@@ -339,6 +339,7 @@ const RUNTIME_PARAMS_: &[ParamType] = &[
         "--disable-warning <STR>...        Silence specific process warnings by code or type"
     ),
     parse_param!("--title <STR>                     Set the process title"),
+    parse_param!("--localstorage-file <STR>         Keep localStorage in the given sqlite file"),
     parse_param!(
         "--zero-fill-buffers                Boolean to force Buffer.allocUnsafe(size) to be zero-filled."
     ),
@@ -551,6 +552,7 @@ pub(crate) const AUTO_REQUIREMENT_ROWS: &[RequirementRow] = {
         (Long(b"redirect-warnings"), Nothing),
         (Long(b"disable-warning"), Nothing),
         (Long(b"title"), Nothing),
+        (Long(b"localstorage-file"), Nothing),
         (Long(b"zero-fill-buffers"), Nothing),
         (Long(b"use-system-ca"), Nothing),
         (Long(b"use-openssl-ca"), Nothing),
@@ -1082,6 +1084,9 @@ fn tag_table(cmd: CommandTag) -> &'static clap::ConvertedTable {
 // `AtomicBool` has the same size/alignment/bit-validity as `bool`, so the
 // `#[no_mangle]` symbol layout is unchanged for the C++ side that reads these
 // as plain `bool`. Rust writes go through `.store(.., Relaxed)`.
+#[unsafe(no_mangle)]
+static Bun__Node__HasLocalStorageFile: core::sync::atomic::AtomicBool =
+    core::sync::atomic::AtomicBool::new(false);
 #[unsafe(no_mangle)]
 static Bun__Node__ZeroFillBuffers: core::sync::atomic::AtomicBool =
     core::sync::atomic::AtomicBool::new(false);
@@ -1889,6 +1894,12 @@ pub(crate) fn parse(cmd: CommandTag, ctx: Context<'_>) -> crate::Result<api::Tra
             // can drop the previous value; box the argv-borrowed slice up
             // front.
             *cli::Bun__Node__ProcessTitle.lock() = Some(title.into());
+        }
+        if args
+            .option(b"--localstorage-file")
+            .is_some_and(|path| !path.is_empty())
+        {
+            Bun__Node__HasLocalStorageFile.store(true, core::sync::atomic::Ordering::Relaxed);
         }
         if args.flag(b"--zero-fill-buffers") {
             Bun__Node__ZeroFillBuffers.store(true, core::sync::atomic::Ordering::Relaxed);

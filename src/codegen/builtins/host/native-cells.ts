@@ -5,6 +5,7 @@ export const functionOfTimersPromisesCell = (timer: string) => `TimersPromises.$
 export const quotaExceededErrorCell = "GlobalObject.QuotaExceededError";
 export const storageCell = "GlobalObject.Storage";
 export const sessionStorageCell = "GlobalObject.sessionStorage";
+export const localStorageCell = "GlobalObject.localStorage";
 export const serverOptionsCell = "Server.options";
 export const requestHandlerCell = "Server.fetch";
 export const socketOptionsCell = "Socket.options";

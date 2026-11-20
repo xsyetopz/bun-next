@@ -1,4 +1,5 @@
 import { spawn } from "bun";
+import { Database } from "bun:sqlite";
 import { describe, expect, it, test } from "bun:test";
 import { bunEnv, bunExe, isLinux, isMacOS, isWindows, tempDir, withoutAggressiveGC } from "harness";
 import { once } from "node:events";
@@ -926,5 +927,50 @@ describe("Web Storage", () => {
       sessionStorage.anything = "should fail";
     }).toThrow(expect.objectContaining({ name: "QuotaExceededError", code: 22, quota: null }));
     sessionStorage.clear();
+  }, 30_000); // Encoding 5 MB as UTF-16 takes seconds in a debug build.
+
+  async function runWithLocalStorage(cwd, args, code) {
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), ...args, "-e", code],
+      env: bunEnv,
+      cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    return { stdout, stderr, exitCode };
+  }
+
+  test("localStorage is undefined and warns once without --localstorage-file", async () => {
+    const { stdout, stderr, exitCode } = await runWithLocalStorage(
+      undefined,
+      [],
+      "console.log(Object.keys(globalThis).includes('localStorage'), localStorage, localStorage)",
+    );
+    expect(stdout).toBe("false undefined undefined\n");
+    expect(stderr.match(/localStorage is not available because --localstorage-file was not provided\./g)).toHaveLength(
+      1,
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  test("localStorage keeps its items in the --localstorage-file", async () => {
+    using dir = tempDir("localstorage", {});
+    const write = await runWithLocalStorage(
+      String(dir),
+      ["--localstorage-file", "storage.db"],
+      "console.log(Object.keys(globalThis).includes('localStorage')); localStorage.a = 1; localStorage.setItem('b', 'two');",
+    );
+    expect(write).toEqual({ stdout: "true\n", stderr: "", exitCode: 0 });
+    // Node.js's schema: UTF-16LE keys and values.
+    using db = new Database(join(String(dir), "storage.db"));
+    const read = db
+      .query("SELECT key, value FROM nodejs_webstorage ORDER BY key")
+      .values()
+      .map(row => row.map(bytes => Buffer.from(bytes).toString("utf16le")));
+    expect(read).toEqual([
+      ["a", "1"],
+      ["b", "two"],
+    ]);
   });
 });

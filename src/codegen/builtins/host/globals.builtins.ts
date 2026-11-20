@@ -7,6 +7,7 @@ import {
   functionOfTimersPromisesCell,
   quotaExceededErrorCell,
   sessionStorageCell,
+  localStorageCell,
   storageCell,
   moduleGraphsCell,
   overriddenMainCell,
@@ -1954,6 +1955,7 @@ export default b.declarations(
   ...lazyGlobal("QuotaExceededError", "internal/domexception", quotaExceededErrorCell),
   ...lazyGlobal("Storage", "internal/webstorage", storageCell),
   ...lazyGlobal("sessionStorage", "internal/webstorage", sessionStorageCell),
+  ...lazyGlobal("localStorage", "internal/webstorage", localStorageCell),
   b.fn("addEventListener", listenerRegistration(globalObject)),
   b.fn("removeEventListener", listenerRemoval),
   // Whatever it is called on, the target is the global object.

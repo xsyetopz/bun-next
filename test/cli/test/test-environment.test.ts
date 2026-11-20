@@ -687,7 +687,7 @@ describe.concurrent("test environment", () => {
     test("a non-configurable global is left alone", async () => {
       using dir = tempDir("test-environment", {
         ...fakePackages,
-        "preload.js": `Object.defineProperty(globalThis, "localStorage", { value: "preloaded" });`,
+        "preload.js": `Object.defineProperty(globalThis, "localStorage", { value: "preloaded", configurable: false });`,
         "1.test.js": `// ${VITEST} happy-dom
           import { test } from "bun:test";
           test("happy-dom", () => {

@@ -232,9 +232,37 @@ ObjectDefineProperties(Storage.prototype, {
 });
 
 let lazySessionStorage;
+let lazyLocalStorage;
+let localStorageWarned = false;
+
+function localStorageLocation(): string {
+  const execArgv: string[] = process.execArgv;
+  let location = "";
+  for (let i = 0; i < execArgv.length; i++) {
+    const arg = execArgv[i];
+    if (arg === "--localstorage-file") location = execArgv[++i] ?? "";
+    else if (arg.startsWith("--localstorage-file=")) location = arg.slice("--localstorage-file=".length);
+  }
+  return location;
+}
 
 export default {
   Storage,
+  get localStorage() {
+    if (lazyLocalStorage !== undefined) return lazyLocalStorage;
+    const location = localStorageLocation();
+    if (location === "") {
+      if (!localStorageWarned) {
+        localStorageWarned = true;
+        process.emitWarning(
+          "localStorage is not available because --localstorage-file was not provided.",
+          "ExperimentalWarning",
+        );
+      }
+      return undefined;
+    }
+    return (lazyLocalStorage = new Storage(kConstructorKey, location));
+  },
   get sessionStorage() {
     return (lazySessionStorage ??= new Storage(kConstructorKey, kInMemoryPath));
   },

@@ -3658,6 +3658,14 @@ JSC_DEFINE_CUSTOM_GETTER(jsSessionStorage, (JSGlobalObject * lexicalGlobalObject
     return JSValue::encode(value);
 }
 
+extern "C" bool Bun__Node__HasLocalStorageFile;
+
+// An accessor, as in Node.js: reading its descriptor must not warn about a missing --localstorage-file.
+JSC_DEFINE_CUSTOM_GETTER(jsLocalStorage, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue, PropertyName))
+{
+    return JSValue::encode(BUN_REQUIRE_INTERNAL_MODULE(defaultGlobalObject(lexicalGlobalObject), InternalWebstorage, "localStorage", "localStorage"_s));
+}
+
 JSC_DEFINE_CUSTOM_SETTER(setJsLazyGlobal, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue, EncodedJSValue value, PropertyName property))
 {
     settleLazyGlobal(defaultGlobalObject(lexicalGlobalObject), property, JSValue::decode(value));
@@ -3835,6 +3843,10 @@ void GlobalObject::addBuiltinGlobals(JSC::VM& vm)
     putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "QuotaExceededError"_s), JSC::CustomGetterSetter::create(vm, jsQuotaExceededError, setJsLazyGlobal), PropertyAttribute::DontEnum | PropertyAttribute::CustomValue);
     putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "Storage"_s), JSC::CustomGetterSetter::create(vm, jsStorage, setJsLazyGlobal), PropertyAttribute::DontEnum | PropertyAttribute::CustomValue);
     putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "sessionStorage"_s), JSC::CustomGetterSetter::create(vm, jsSessionStorage, setJsEnumerableLazyGlobal), static_cast<unsigned>(PropertyAttribute::CustomValue));
+    if (Bun__Node__HasLocalStorageFile)
+        putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "localStorage"_s), JSC::CustomGetterSetter::create(vm, jsLocalStorage, setJsEnumerableLazyGlobal), static_cast<unsigned>(PropertyAttribute::CustomAccessor));
+    else
+        putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "localStorage"_s), JSC::CustomGetterSetter::create(vm, jsLocalStorage, setJsLazyGlobal), PropertyAttribute::DontEnum | PropertyAttribute::CustomAccessor);
 
     // ----- Extensions to Built-in objects -----
 
