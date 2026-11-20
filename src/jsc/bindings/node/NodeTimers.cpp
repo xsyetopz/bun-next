@@ -73,6 +73,35 @@ static ALWAYS_INLINE void noteCallerForDebugger(VM& vm, CallFrame* callFrame)
 #endif
 }
 
+// Node's async_hooks init for the resource a timer function returns.
+static EncodedJSValue reportTimerInit(JSGlobalObject* globalObject, EncodedJSValue encodedTimer, ASCIILiteral type)
+{
+    auto* zigGlobalObject = defaultGlobalObject(globalObject);
+    JSValue hook = zigGlobalObject->m_timerInitHook.get();
+    if (!hook || !encodedTimer) [[likely]]
+        return encodedTimer;
+    auto& vm = JSC::getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSValue timer = JSValue::decode(encodedTimer);
+    MarkedArgumentBuffer args;
+    args.append(timer);
+    args.append(jsString(vm, String(type)));
+    JSC::call(globalObject, hook, JSC::getCallData(hook), jsUndefined(), args);
+    RETURN_IF_EXCEPTION(scope, {});
+    return JSValue::encode(timer);
+}
+
+JSC_DEFINE_HOST_FUNCTION(jsFunctionSetTimerInitHook, (JSGlobalObject * globalObject, CallFrame* callFrame))
+{
+    auto* zigGlobalObject = defaultGlobalObject(globalObject);
+    JSValue hook = callFrame->argument(0);
+    if (hook.isCallable())
+        zigGlobalObject->m_timerInitHook.set(JSC::getVM(globalObject), zigGlobalObject, hook);
+    else
+        zigGlobalObject->m_timerInitHook.clear();
+    return JSValue::encode(jsUndefined());
+}
+
 using ScheduleTimer = JSC::EncodedJSValue (*)(JSC::JSGlobalObject*, JSC::EncodedJSValue callback, JSC::EncodedJSValue arguments, JSC::EncodedJSValue countdown);
 
 static ALWAYS_INLINE EncodedJSValue scheduleTimer(JSGlobalObject* globalObject, CallFrame* callFrame, ScheduleTimer schedule, ASCIILiteral requiresAFunction, ASCIILiteral expectsAFunction)
@@ -97,7 +126,9 @@ static ALWAYS_INLINE EncodedJSValue scheduleTimer(JSGlobalObject* globalObject, 
 
     noteCallerForDebugger(vm, callFrame);
 
-    RELEASE_AND_RETURN(scope, schedule(globalObject, JSC::JSValue::encode(job), JSC::JSValue::encode(arguments), JSValue::encode(num)));
+    auto timer = schedule(globalObject, JSC::JSValue::encode(job), JSC::JSValue::encode(arguments), JSValue::encode(num));
+    RETURN_IF_EXCEPTION(scope, {});
+    RELEASE_AND_RETURN(scope, reportTimerInit(globalObject, timer, "Timeout"_s));
 }
 
 using ScheduleImmediate = JSC::EncodedJSValue (*)(JSC::JSGlobalObject*, JSC::EncodedJSValue callback, JSC::EncodedJSValue arguments);
@@ -122,7 +153,9 @@ static ALWAYS_INLINE EncodedJSValue scheduleImmediate(JSGlobalObject* globalObje
     JSC::JSValue arguments = callbackArguments(globalObject, scope, callFrame, 1);
     RETURN_IF_EXCEPTION(scope, {});
 
-    RELEASE_AND_RETURN(scope, schedule(globalObject, JSC::JSValue::encode(job), JSValue::encode(arguments)));
+    auto immediate = schedule(globalObject, JSC::JSValue::encode(job), JSValue::encode(arguments));
+    RETURN_IF_EXCEPTION(scope, {});
+    RELEASE_AND_RETURN(scope, reportTimerInit(globalObject, immediate, "Immediate"_s));
 }
 
 // Must match `Api` in FakeTimers.rs.

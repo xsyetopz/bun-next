@@ -416,6 +416,8 @@ public:
     V(public, LazyPropertyOfGlobalObject<Structure>, m_nodeModuleSourceMapOriginStructure)                   \
                                                                                                              \
     V(public, WriteBarrier<Bun::JSNextTickQueue>, m_nextTickQueue)                                           \
+    /* Reports Timeout and Immediate resources to async_hooks init; empty while no init hook is on. */       \
+    V(public, WriteBarrier<JSC::Unknown>, m_timerInitHook)                                                   \
                                                                                                              \
     /* WriteBarrier<Unknown> m_JSBunDebuggerValue; */                                                        \
     V(private, ThenablesArray, m_thenables)                                                                  \

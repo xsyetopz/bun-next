@@ -544,7 +544,7 @@ function createHook(hook: HookCallbacks) {
   return {
     enable() {
       if (init !== undefined && enabledInit === undefined) {
-        // init is delivered for TickObject resources (process.nextTick);
+        // init is delivered for TickObject, Timeout and Immediate resources;
         // other resource types are still unimplemented.
         // Per-instance wrapper: two hooks registered with the same init
         // function must stay independently removable (removal is by
@@ -557,7 +557,7 @@ function createHook(hook: HookCallbacks) {
           require("internal/process/next_tick_queue").whileHooked.push =
             require("internal/process/tick_ring").pushInsideNextTick;
         }
-        require("internal/async_hooks_tick").tickInitHooks.push(enabledInit);
+        require("internal/async_hooks_tick").addInitHook(enabledInit);
       }
       if (before !== undefined || after !== undefined || destroy !== undefined || promiseResolve !== undefined) {
         createHookNotImpl(hook);
@@ -572,9 +572,7 @@ function createHook(hook: HookCallbacks) {
     },
     disable() {
       if (enabledInit !== undefined) {
-        const hooks = require("internal/async_hooks_tick").tickInitHooks;
-        const idx = hooks.indexOf(enabledInit);
-        if (idx !== -1) hooks.splice(idx, 1);
+        require("internal/async_hooks_tick").removeInitHook(enabledInit);
         enabledInit = undefined;
       }
       if (this[kHookEnabled]) {

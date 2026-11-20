@@ -1,5 +1,5 @@
 import assert from "assert";
-import { AsyncLocalStorage, AsyncResource } from "async_hooks";
+import { AsyncLocalStorage, AsyncResource, createHook } from "async_hooks";
 
 test("node async_hooks.AsyncLocalStorage enable disable", async done => {
   const asyncLocalStorage = new AsyncLocalStorage<Map<string, any>>();
@@ -86,4 +86,27 @@ test("AsyncResource.bind", () => {
     fn = AsyncResource.bind(() => localStorage.getStore());
   });
   expect(fn()).toBe(true);
+});
+
+test("createHook init reports Timeout and Immediate resources while enabled", () => {
+  const events: [string, boolean][] = [];
+  const hook = createHook({
+    init(asyncId: number, type: string, _triggerAsyncId: number, resource: object) {
+      if (type === "Timeout" || type === "Immediate") events.push([type, typeof asyncId === "number" && !!resource]);
+    },
+  }).enable();
+  const timeout = setTimeout(() => {}, 1000);
+  const interval = setInterval(() => {}, 1000);
+  const immediate = setImmediate(() => {});
+  timeout.refresh();
+  hook.disable();
+  const afterDisable = setTimeout(() => {}, 1000);
+  for (const timer of [timeout, interval, afterDisable]) clearTimeout(timer);
+  clearImmediate(immediate);
+
+  expect(events).toEqual([
+    ["Timeout", true],
+    ["Timeout", true],
+    ["Immediate", true],
+  ]);
 });

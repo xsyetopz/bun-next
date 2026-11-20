@@ -10,6 +10,7 @@ JSC_DECLARE_HOST_FUNCTION(functionSetImmediate);
 JSC_DECLARE_HOST_FUNCTION(functionClearTimeout);
 JSC_DECLARE_HOST_FUNCTION(functionClearInterval);
 JSC_DECLARE_HOST_FUNCTION(functionClearImmediate);
+JSC_DECLARE_HOST_FUNCTION(jsFunctionSetTimerInitHook);
 
 // Lazy property callbacks for the global object table: create setTimeout /
 // setInterval / setImmediate with Node's `[util.promisify.custom]` accessor,
