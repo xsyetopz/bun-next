@@ -1004,3 +1004,85 @@ describe("util.debounce", () => {
     expect(await debounced().catch(e => e)).toBe(error);
   });
 });
+
+describe("util.throttle", () => {
+  it("is an enumerable export that validates its arguments like Node", () => {
+    expect(Object.keys(util)).toContain("throttle");
+    expect(() => util.throttle(1, 1, 1)).toThrow(expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }));
+    expect(() => util.throttle(() => {}, 0, 1)).toThrow(expect.objectContaining({ code: "ERR_OUT_OF_RANGE" }));
+    expect(() => util.throttle(() => {}, 1, 2 ** 31)).toThrow(expect.objectContaining({ code: "ERR_OUT_OF_RANGE" }));
+    expect(() => util.throttle(() => {}, 1, 1, { overflow: "skip" })).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_ARG_VALUE" }),
+    );
+    expect(() => util.throttle(() => {}, 1, 1, { signal: AbortSignal.abort("why") })).toThrow(
+      expect.objectContaining({ name: "AbortError", cause: "why" }),
+    );
+  });
+
+  it("copies name and length and exposes the Node method and getter shapes", () => {
+    function original(a, b) {}
+    const throttled = util.throttle(original, 1, 1);
+    expect([throttled.name, throttled.length]).toEqual(["original", 2]);
+    expect(Object.keys(throttled)).toEqual(["cancel", "hasImmediateCapacity", "ref", "unref"]);
+    expect(throttled.unref()).toBe(throttled);
+    expect(throttled.ref()).toBe(throttled);
+  });
+
+  it("invokes up to limit calls at once and queues the rest", async () => {
+    const calls = [];
+    const throttled = util.throttle(
+      function (value) {
+        calls.push([this, value]);
+        return value * 2;
+      },
+      2,
+      1000,
+    );
+    const results = [throttled(1), throttled(2), throttled(3)];
+    expect([throttled.activeCount, throttled.pendingCount, throttled.hasImmediateCapacity()]).toEqual([2, 1, false]);
+    expect(throttled.pending).toBe(results[2]);
+    expect(await Promise.all(results.slice(0, 2))).toEqual([2, 4]);
+    throttled.cancel("done");
+    expect(await results[2].catch(e => [e.name, e.cause])).toEqual(["AbortError", "done"]);
+    expect(calls).toEqual([
+      [throttled, 1],
+      [throttled, 2],
+    ]);
+  });
+
+  it("runs a queued call once the interval allows it", async () => {
+    const throttled = util.throttle(value => value, 1, 1);
+    const results = [throttled("a"), throttled("b")];
+    expect(throttled.pendingCount).toBe(1);
+    expect(await Promise.all(results)).toEqual(["a", "b"]);
+  });
+
+  it("drops calls over the limit with a handled ERR_THROTTLED rejection", async () => {
+    const throttled = util.throttle(value => value, 1, 1000, { overflow: "drop" });
+    expect(await throttled(1)).toBe(1);
+    const error = await throttled(2).catch(e => e);
+    expect([error.code, error.message]).toEqual(["ERR_THROTTLED", "The call was dropped by the throttled function"]);
+    expect(throttled.pendingCount).toBe(0);
+  });
+
+  it("limits unsettled invocations with concurrency", async () => {
+    const { promise: gate, resolve } = Promise.withResolvers();
+    const throttled = util.throttle(() => gate, 10, 1000, { concurrency: 1 });
+    const first = throttled();
+    const second = throttled();
+    expect([throttled.activeCount, throttled.pendingCount]).toEqual([1, 1]);
+    resolve("open");
+    expect(await Promise.all([first, second])).toEqual(["open", "open"]);
+  });
+
+  it("rejects pending and later calls once the signal aborts", async () => {
+    const controller = new AbortController();
+    const throttled = util.throttle(() => {}, 1, 1000, { signal: controller.signal });
+    throttled();
+    const pending = throttled();
+    controller.abort("stop");
+    const error = await pending.catch(e => e);
+    expect([error.name, error.cause]).toEqual(["AbortError", "stop"]);
+    expect(await throttled().catch(e => e)).toBe(error);
+  });
+});
