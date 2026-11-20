@@ -67,6 +67,18 @@ export const Histogram = b.class({
     /** A `Map`. */
     percentiles: { getter: b.any, capability: "js", throws: true },
     percentilesBigInt: { getter: b.any, capability: "js", throws: true },
+    /** A `Map` from each of `percentiles`, in order, to the value at it. */
+    percentilesAt: {
+      args: { percentiles: b.array(b.f64) },
+      expected: { percentiles: ["Array"] },
+      returns: b.any,
+      capability: "js",
+      throws: true,
+    },
+    /** A `Map` from the lowest value of the slot at each multiple of `stepSize` to the values up to that slot. */
+    linearBuckets: { args: { stepSize: b.any }, returns: b.any, capability: "js", throws: true },
+    /** A `Map` as `linearBuckets()` makes, at `firstBucket` times each power of `base`. */
+    logBuckets: { args: { firstBucket: b.any, base: b.any }, returns: b.any, capability: "js", throws: true },
     countAt: atValue,
     cdf: atValue,
     ccdf: atValue,

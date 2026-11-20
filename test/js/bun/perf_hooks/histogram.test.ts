@@ -182,6 +182,88 @@ describe("Histogram", () => {
     });
   });
 
+  describe("percentilesAt, linearBuckets and logBuckets", () => {
+    test("percentilesAt maps the percentiles in order to their values", () => {
+      const h = createHistogram() as any;
+      for (let value = 1; value <= 100; value++) h.record(value);
+      assert.deepStrictEqual(
+        [...h.percentilesAt([99, 50, 50, 100])],
+        [
+          [50, 50],
+          [99, 99],
+          [100, 100],
+        ],
+      );
+    });
+
+    test("percentilesAt is 0 for an empty histogram", notInNode, () => {
+      assert.deepStrictEqual([...(createHistogram() as any).percentilesAt([50])], [[50, 0]]);
+    });
+
+    test("linearBuckets counts the values up to each multiple of stepSize", () => {
+      const h = createHistogram() as any;
+      for (const value of [5, 15, 15, 95]) h.record(value);
+      const expected = [[10, 1], [20, 2], ...[30, 40, 50, 60, 70, 80, 90].map(at => [at, 0]), [100, 1]];
+      assert.deepStrictEqual([...h.linearBuckets(10)], expected);
+    });
+
+    test("logBuckets counts the values up to each power of base, rounded towards 0", () => {
+      const h = createHistogram() as any;
+      for (const value of [1, 3, 50]) h.record(value);
+      const expected = [
+        [1, 1],
+        [2, 0],
+        [4, 1],
+        [8, 0],
+        [16, 0],
+        [32, 0],
+        [64, 1],
+      ];
+      assert.deepStrictEqual([...h.logBuckets(1, 2)], expected);
+      assert.deepStrictEqual([...h.logBuckets(1, 2.5)], expected);
+    });
+
+    test("the buckets are keyed by the lowest value of a slot", () => {
+      const h = createHistogram({ lowest: 1000 }) as any;
+      h.record(700);
+      assert.deepStrictEqual(
+        [...h.linearBuckets(100)],
+        [
+          [0, 0],
+          [512, 1],
+        ],
+      );
+      const capped = createHistogram({ highest: 1000 }) as any;
+      for (const value of [10, 20]) capped.record(value);
+      assert.deepStrictEqual([...capped.linearBuckets(5000)], [[2047, 2]]);
+      assert.deepStrictEqual([...createHistogram().linearBuckets(1)], []);
+    });
+
+    test("a slot wider than the step keeps its count", notInNode, () => {
+      const h = createHistogram() as any;
+      for (const value of [2048, 2049]) h.record(value);
+      const buckets = h.linearBuckets(1);
+      assert.deepStrictEqual([buckets.size, buckets.get(2048)], [2048, 2]);
+    });
+
+    test("validate their arguments", () => {
+      const h = createHistogram() as any;
+      assert.throws(() => h.percentilesAt(50), { code: "ERR_INVALID_ARG_TYPE" });
+      assert.throws(() => h.percentilesAt([1, "2"]), { code: "ERR_INVALID_ARG_TYPE" });
+      for (const percentile of [0, 101, NaN]) {
+        assert.throws(() => h.percentilesAt([50, percentile]), {
+          code: "ERR_OUT_OF_RANGE",
+          message: /"percentiles\[1\]"/,
+        });
+      }
+      assert.throws(() => h.linearBuckets("1"), { code: "ERR_INVALID_ARG_TYPE" });
+      for (const stepSize of [0, 1.5]) assert.throws(() => h.linearBuckets(stepSize), { code: "ERR_OUT_OF_RANGE" });
+      assert.throws(() => h.logBuckets(0, 2), { code: "ERR_OUT_OF_RANGE" });
+      assert.throws(() => h.logBuckets(1, "2"), { code: "ERR_INVALID_ARG_TYPE" });
+      assert.throws(() => h.logBuckets(1, 1), { code: "ERR_OUT_OF_RANGE" });
+    });
+  });
+
   describe("skewness and kurtosis", () => {
     test("are the standardized third and fourth moments", () => {
       const h = createHistogram();
@@ -1657,8 +1739,11 @@ describe("Histogram", () => {
         "get resetCount",
         "get skewness",
         "get stddev",
+        "linearBuckets/1",
+        "logBuckets/2",
         "percentile/1",
         "percentileBigInt/1",
+        "percentilesAt/1",
         "reset/0",
         "snapshot/0",
         "toJSON/0",

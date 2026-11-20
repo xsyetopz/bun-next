@@ -286,19 +286,7 @@ impl Histogram {
         value_to_js: impl Fn(&JSGlobalObject, u64) -> JsResult<JSValue>,
     ) -> bindgen::Result<'a, JSValue> {
         let percentiles = self.read(|histogram| histogram.percentiles());
-        let global = cx.global();
-        let value = JSMap::create(global);
-        if let Some(map) = JSMap::from_js(value) {
-            let map = JSMap::opaque_mut(map.as_ptr());
-            for (percentile, at) in percentiles {
-                map.set(
-                    global,
-                    JSValue::js_number(percentile),
-                    value_to_js(global, at)?,
-                )?;
-            }
-        }
-        Ok(value)
+        number_map(cx, percentiles, value_to_js)
     }
 
     pub(crate) fn get_percentiles<'a>(&self, cx: &mut JsScope<'a>) -> bindgen::Result<'a, JSValue> {
@@ -329,6 +317,83 @@ impl Histogram {
             ));
         }
         Ok(self.read(|histogram| histogram.value_at_percentile(percentile)))
+    }
+
+    /// Node.js: 1 at every percentile if the histogram is empty.
+    pub(crate) fn percentiles_at<'a>(
+        &self,
+        cx: &mut JsScope<'a>,
+        mut percentiles: Vec<f64>,
+    ) -> bindgen::Result<'a, JSValue> {
+        for (index, &percentile) in percentiles.iter().enumerate() {
+            if !(percentile > 0.0 && percentile <= 100.0) {
+                let field_name = format!("percentiles[{index}]");
+                let options = OutOfRangeOptions {
+                    field_name: field_name.as_bytes(),
+                    msg: b"> 0 && <= 100",
+                    ..Default::default()
+                };
+                return Err(cx.heap.error_with_code(
+                    ErrorCode::OUT_OF_RANGE,
+                    format_args!("{}", out_of_range(NodeNumber(percentile), options)),
+                ));
+            }
+        }
+        percentiles.sort_by(f64::total_cmp);
+        let values = self.read(|histogram| {
+            percentiles
+                .into_iter()
+                .map(|percentile| (percentile, histogram.value_at_percentile(percentile)))
+                .collect::<Vec<_>>()
+        });
+        number_map(cx, values, |_, value| {
+            Ok(JSValue::js_number_from_uint64(value))
+        })
+    }
+
+    pub(crate) fn linear_buckets<'a>(
+        &self,
+        cx: &mut JsScope<'a>,
+        step_size: JsLocal<'a>,
+    ) -> bindgen::Result<'a, JSValue> {
+        let step = validators::validate_integer(
+            cx.global(),
+            step_size.to_js(),
+            "stepSize",
+            Some(1),
+            None,
+        )?;
+        let buckets = self.read(|histogram| histogram.linear_buckets(step as u64));
+        buckets_map(cx, buckets)
+    }
+
+    pub(crate) fn log_buckets<'a>(
+        &self,
+        cx: &mut JsScope<'a>,
+        first_bucket: JsLocal<'a>,
+        base: JsLocal<'a>,
+    ) -> bindgen::Result<'a, JSValue> {
+        let (first_bucket, base) = (first_bucket.to_js(), base.to_js());
+        let global = cx.global();
+        let first =
+            validators::validate_integer(global, first_bucket, "firstBucket", Some(1), None)?;
+        if !base.is_number() {
+            Err(global.throw_invalid_argument_type_value("base", "number", base))?;
+        }
+        let base = base.as_number();
+        if base <= 1.0 {
+            let options = OutOfRangeOptions {
+                field_name: b"base",
+                msg: b"> 1",
+                ..Default::default()
+            };
+            return Err(cx.heap.error_with_code(
+                ErrorCode::OUT_OF_RANGE,
+                format_args!("{}", out_of_range(NodeNumber(base), options)),
+            ));
+        }
+        let buckets = self.read(|histogram| histogram.log_buckets(first as u64, base));
+        buckets_map(cx, buckets)
     }
 
     /// Node.js: reads outside its counts for a negative value.
@@ -662,4 +727,27 @@ pub(crate) extern "C" fn Histogram__fromStructuredClone(
 #[unsafe(no_mangle)]
 pub(crate) extern "C" fn Histogram__releaseStructuredClone(id: u64) {
     IN_FLIGHT.lock().remove(&id);
+}
+
+fn number_map<'a>(
+    cx: &mut JsScope<'a>,
+    entries: impl IntoIterator<Item = (f64, u64)>,
+    value_to_js: impl Fn(&JSGlobalObject, u64) -> JsResult<JSValue>,
+) -> bindgen::Result<'a, JSValue> {
+    let global = cx.global();
+    let value = JSMap::create(global);
+    if let Some(map) = JSMap::from_js(value) {
+        let map = JSMap::opaque_mut(map.as_ptr());
+        for (key, at) in entries {
+            map.set(global, JSValue::js_number(key), value_to_js(global, at)?)?;
+        }
+    }
+    Ok(value)
+}
+
+fn buckets_map<'a>(cx: &mut JsScope<'a>, buckets: Vec<(u64, u64)>) -> bindgen::Result<'a, JSValue> {
+    let buckets = buckets.into_iter().map(|(at, count)| (at as f64, count));
+    number_map(cx, buckets, |_, count| {
+        Ok(JSValue::js_number_from_uint64(count))
+    })
 }

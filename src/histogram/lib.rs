@@ -23,6 +23,7 @@
     clippy::unreachable
 )]
 
+mod buckets;
 mod ewma;
 pub use ewma::Ewma;
 
@@ -440,7 +441,7 @@ impl Histogram {
             + self.chunk_count * size_of::<Chunk>()
     }
 
-    /// `value` is at most `highest_trackable_value`.
+    /// `value` is below `1 << 63`. The slot is past the last one that can count a value if `value` is.
     fn index_of(&self, value: u64) -> usize {
         let magnitude = self.sub_bucket_half_count_magnitude;
         // The bit that a value has to reach to be past bucket 0.
@@ -451,7 +452,7 @@ impl Histogram {
         ((bucket as usize) << magnitude) + sub_bucket as usize
     }
 
-    /// `index` is that of a slot that a value can reach.
+    /// `index` is that of a slot that a value below `1 << 63` falls in.
     fn slot(&self, index: usize) -> Slot {
         let magnitude = self.sub_bucket_half_count_magnitude;
         let half_count = 1 << magnitude;
