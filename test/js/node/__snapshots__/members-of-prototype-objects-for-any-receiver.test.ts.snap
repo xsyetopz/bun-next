@@ -6722,6 +6722,39 @@ node:diagnostics_channel.Channel.prototype runStores()
   throws TypeError: what is called is not a function <- every receiver
 node:diagnostics_channel.Channel.prototype runStores("a", 1)
   throws TypeError: what is called is not a function <- every receiver
+node:diagnostics_channel.Channel.prototype withStoreScope()
+  object Object <- every receiver
+node:diagnostics_channel.Channel.prototype withStoreScope("a", 1)
+  object Object <- every receiver
+node:diagnostics_channel.BoundedChannel.prototype hasSubscribers, read
+  throws TypeError: undefined is not an object <- every object, a number, a string, undefined
+  throws TypeError: null is not an object <- null
+node:diagnostics_channel.BoundedChannel.prototype subscribe()
+  throws TypeError: undefined is not an object <- every receiver
+node:diagnostics_channel.BoundedChannel.prototype subscribe("a", 1)
+  undefined <- every receiver
+node:diagnostics_channel.BoundedChannel.prototype unsubscribe()
+  throws TypeError: undefined is not an object <- every receiver
+node:diagnostics_channel.BoundedChannel.prototype unsubscribe("a", 1)
+  true <- every receiver
+node:diagnostics_channel.BoundedChannel.prototype withScope()
+  object BoundedChannelScope <- {}, an object without a prototype, an instance of another class, a proxy of {}, a number, a string
+  throws TypeError: undefined is not an object <- an heir of the prototype object, a proxy of such an heir, the prototype object
+  throws TypeError: undefined is not an object (near '...constructor(boundedChannel, con...') <- undefined
+  throws TypeError: null is not an object (near '...constructor(boundedChannel, con...') <- null
+node:diagnostics_channel.BoundedChannel.prototype withScope("a", 1)
+  object BoundedChannelScope <- {}, an object without a prototype, an instance of another class, a proxy of {}, a number, a string
+  throws TypeError: undefined is not an object <- an heir of the prototype object, a proxy of such an heir, the prototype object
+  throws TypeError: undefined is not an object (near '...constructor(boundedChannel, con...') <- undefined
+  throws TypeError: null is not an object (near '...constructor(boundedChannel, con...') <- null
+node:diagnostics_channel.BoundedChannel.prototype run()
+  throws TypeError: what is called is not a function <- {}, an object without a prototype, an instance of another class, a proxy of {}, a number, a string
+  throws TypeError: undefined is not an object <- an heir of the prototype object, a proxy of such an heir, the prototype object, undefined
+  throws TypeError: null is not an object <- null
+node:diagnostics_channel.BoundedChannel.prototype run("a", 1)
+  throws TypeError: what is called is not a function <- {}, an object without a prototype, an instance of another class, a proxy of {}, a number, a string
+  throws TypeError: undefined is not an object <- an heir of the prototype object, a proxy of such an heir, the prototype object, undefined
+  throws TypeError: null is not an object <- null
 what is above object 1 subscribe()
   throws TypeError: undefined is not an object <- every receiver
 what is above object 1 subscribe("a", 1)
@@ -7258,9 +7291,29 @@ node:wasi.WASI.prototype setMemory("a", 1)
   throws TypeError: undefined is not an object <- undefined
   throws TypeError: null is not an object <- null
 node:wasi.WASI.prototype start()
-  throws TypeError: undefined is not an object <- every receiver
+  throws TypeError: Cannot access private method or acessor <- every object, a number, a string
+  throws TypeError: undefined is not an object <- undefined
+  throws TypeError: null is not an object <- null
 node:wasi.WASI.prototype start("a", 1)
-  throws Error: instance.exports must be an Object. Received undefined. <- every receiver
+  throws TypeError: Cannot access private method or acessor <- every object, a number, a string
+  throws TypeError: undefined is not an object <- undefined
+  throws TypeError: null is not an object <- null
+node:wasi.WASI.prototype initialize()
+  throws TypeError: Cannot access private method or acessor <- every object, a number, a string
+  throws TypeError: undefined is not an object <- undefined
+  throws TypeError: null is not an object <- null
+node:wasi.WASI.prototype initialize("a", 1)
+  throws TypeError: Cannot access private method or acessor <- every object, a number, a string
+  throws TypeError: undefined is not an object <- undefined
+  throws TypeError: null is not an object <- null
+node:wasi.WASI.prototype getImportObject()
+  object Object <- every object, a number, a string
+  throws TypeError: undefined is not an object <- undefined
+  throws TypeError: null is not an object <- null
+node:wasi.WASI.prototype getImportObject("a", 1)
+  object Object <- every object, a number, a string
+  throws TypeError: undefined is not an object <- undefined
+  throws TypeError: null is not an object <- null
 node:wasi.WASI.prototype getImports()
   throws TypeError: WebAssembly.Module.imports called with non WebAssembly.Module argument <- every receiver
 node:wasi.WASI.prototype getImports("a", 1)
