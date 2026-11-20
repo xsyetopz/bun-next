@@ -1409,6 +1409,42 @@ describe("node:http", () => {
     expect(() => validateHeaderValue("Foo", "Bar\r")).toThrow();
   });
 
+  test("isValidHeaderName", () => {
+    const { isValidHeaderName } = http as any;
+    const inputs = ["content-type", "X-Request-Id", "", "bad header", 42, "abcdefghijkl ", "ü", undefined];
+    expect(inputs.map(input => isValidHeaderName(input))).toEqual([true, true, false, false, false, false, false, false]);
+    expect(isValidHeaderName.length).toBe(1);
+  });
+
+  test("isValidHeaderValue", () => {
+    const { isValidHeaderValue } = http as any;
+    const inputs = ["text/html", 123, undefined, Symbol(), "a\r\nb", "a\x01b", null, {}, ["a", "b\n"], "é", "Ā"];
+    expect(inputs.map(input => isValidHeaderValue(input))).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false,
+    ]);
+    const relaxed = { httpValidation: "relaxed" };
+    expect(["a\x01b", "a\nb", "Ā"].map(input => isValidHeaderValue(input, relaxed))).toEqual([true, false, false]);
+    expect(isValidHeaderValue("a\x01b", { httpValidation: "strict" })).toBe(false);
+    expect(isValidHeaderValue.length).toBe(2);
+    expect(() => isValidHeaderValue("a", null)).toThrow(expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }));
+    expect(() => isValidHeaderValue("a", { httpValidation: "x" })).toThrow(
+      expect.objectContaining({
+        code: "ERR_INVALID_ARG_VALUE",
+        message: "The property 'options.httpValidation' must be one of: 'strict', 'relaxed'. Received 'x'",
+      }),
+    );
+  });
+
   test("req.req = req", done => {
     const server = createServer((req, res) => {
       (req as any).req = req;

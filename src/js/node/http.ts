@@ -4,7 +4,7 @@ const { Agent } = httpAgent;
 const { ClientRequest } = require("node:_http_client");
 const { validateHeaderName, validateHeaderValue, parsers } = require("node:_http_common");
 const { IncomingMessage } = require("node:_http_incoming");
-const { OutgoingMessage } = require("node:_http_outgoing");
+const { OutgoingMessage, isValidHeaderName, isValidHeaderValue } = require("node:_http_outgoing");
 const { Server, ServerResponse } = require("node:_http_server");
 
 const { METHODS, STATUS_CODES, setMaxHTTPHeaderSize, getMaxHTTPHeaderSize } = require("internal/http");
@@ -55,6 +55,8 @@ const http_exports = {
   set maxHeaderSize(value) {
     setMaxHTTPHeaderSize(value);
   },
+  isValidHeaderName,
+  isValidHeaderValue,
   validateHeaderName,
   validateHeaderValue,
   setMaxIdleHTTPParsers(max) {

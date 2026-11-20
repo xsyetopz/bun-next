@@ -2,7 +2,7 @@
 // This is a port of Node.js's lib/_http_outgoing.js
 // https://github.com/nodejs/node/blob/v26.3.0/lib/_http_outgoing.js
 const { Stream } = require("internal/stream");
-const { validateString } = require("internal/validators");
+const { validateObject, validateOneOf, validateString } = require("internal/validators");
 const { isUint8Array } = require("node:util/types");
 const { deprecate } = require("internal/util/deprecate");
 const { getDefaultHighWaterMark } = require("internal/streams/state");
@@ -11,6 +11,7 @@ const {
   validateHeaderName,
   validateHeaderValue,
   _checkInvalidHeaderChar: checkInvalidHeaderChar,
+  _checkIsHttpToken: checkIsHttpToken,
   chunkExpression: RE_TE_CHUNKED,
   isLenient,
 } = require("node:_http_common");
@@ -646,6 +647,29 @@ function validateHeaderValueLenient(name, value, lenient) {
   if (checkInvalidHeaderChar(value, lenient)) {
     throw $ERR_INVALID_CHAR("header content", name);
   }
+}
+
+function isValidHeaderName(name) {
+  return typeof name === "string" && checkIsHttpToken(name);
+}
+
+const kHttpValidationValues = ["strict", "relaxed"];
+
+function isValidHeaderValue(value, options) {
+  let lenient = false;
+  if (options !== undefined) {
+    validateObject(options, "options");
+    const { httpValidation } = options;
+    if (httpValidation === "relaxed") {
+      lenient = true;
+    } else if (httpValidation !== undefined && httpValidation !== "strict") {
+      validateOneOf(httpValidation, "options.httpValidation", kHttpValidationValues);
+    }
+  }
+  if (value === undefined || typeof value === "symbol") {
+    return false;
+  }
+  return !checkInvalidHeaderChar(String(value), lenient);
 }
 
 function storeHeader(self, state, key, value, validate, lenient) {
@@ -1329,6 +1353,8 @@ export default {
   kSocket,
   kRejectNonStandardBodyWrites,
   parseUniqueHeadersOption,
+  isValidHeaderName,
+  isValidHeaderValue,
   validateHeaderName,
   validateHeaderValue,
   OutgoingMessage,

@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/_http_outgoing.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 7eb68379dcc85e37da343c90d1da52f21b0bd91937cea041c06b56a6db7551fc.
+// Written against that file with the SHA-256 a16b693f2e210ea46a4170b254e3457184d5871aacb4269882269328796a7767.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:_http_outgoing"
@@ -12,7 +12,7 @@ if (streamOfProgram !== Stream)
   throw new TypeError(
     "stream.Stream was replaced before node:http was loaded. In a compiled executable the classes of node:http extend the one that Bun made: add to stream.Stream.prototype instead, or load node:http first.",
   );
-const { validateString } = require("internal/validators");
+const { validateObject, validateOneOf, validateString } = require("internal/validators");
 const { isUint8Array } = require("node:util/types");
 const { deprecate } = require("internal/util/deprecate");
 const { getDefaultHighWaterMark } = require("internal/streams/state");
@@ -30,6 +30,7 @@ const {
   validateHeaderName,
   validateHeaderValue,
   _checkInvalidHeaderChar: checkInvalidHeaderChar,
+  _checkIsHttpToken: checkIsHttpToken,
   chunkExpression: RE_TE_CHUNKED,
   isLenient,
 } = require("node:_http_common");
@@ -833,6 +834,29 @@ function validateHeaderValueLenient(
   if (checkInvalidHeaderChar(value, lenient)) {
     throw $ERR_INVALID_CHAR("header content", name);
   }
+}
+
+function isValidHeaderName(name: unknown): boolean {
+  return typeof name === "string" && checkIsHttpToken(name);
+}
+
+const kHttpValidationValues = ["strict", "relaxed"];
+
+function isValidHeaderValue(value: unknown, options?: { httpValidation?: unknown }): boolean {
+  let lenient = false;
+  if (options !== undefined) {
+    validateObject(options, "options");
+    const { httpValidation } = options;
+    if (httpValidation === "relaxed") {
+      lenient = true;
+    } else if (httpValidation !== undefined && httpValidation !== "strict") {
+      validateOneOf(httpValidation, "options.httpValidation", kHttpValidationValues);
+    }
+  }
+  if (value === undefined || typeof value === "symbol") {
+    return false;
+  }
+  return !checkInvalidHeaderChar(String(value), lenient);
 }
 
 function storeHeader(
@@ -2427,6 +2451,8 @@ export default {
   kSocket,
   kRejectNonStandardBodyWrites,
   parseUniqueHeadersOption,
+  isValidHeaderName,
+  isValidHeaderValue,
   validateHeaderName,
   validateHeaderValue,
   OutgoingMessage,

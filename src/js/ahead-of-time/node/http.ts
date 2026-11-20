@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/http.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 00da691f682964c532730a08c0b7c7605ece1e07636025f9a75cd0283c4bbb1e.
+// Written against that file with the SHA-256 5c35f4dacb7a3c30f553e570cd39655ecfe8e73e6c0849de25f75c89c7970d5b.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 const { validateInteger, validateObject } = require("internal/validators");
@@ -8,7 +8,7 @@ const { Agent } = require("node:_http_agent");
 const { ClientRequest } = require("node:_http_client");
 const { validateHeaderName, validateHeaderValue, parsers } = require("node:_http_common");
 const { IncomingMessage } = require("node:_http_incoming");
-const { OutgoingMessage } = require("node:_http_outgoing");
+const { OutgoingMessage, isValidHeaderName, isValidHeaderValue } = require("node:_http_outgoing");
 const { Server, ServerResponse } = require("node:_http_server");
 
 const { METHODS, STATUS_CODES, setMaxHTTPHeaderSize, getMaxHTTPHeaderSize } = require("internal/http");
@@ -66,6 +66,8 @@ const http_exports = {
   set maxHeaderSize(value) {
     setMaxHTTPHeaderSize(value);
   },
+  isValidHeaderName,
+  isValidHeaderValue,
   validateHeaderName,
   validateHeaderValue,
   setMaxIdleHTTPParsers(max: number) {
