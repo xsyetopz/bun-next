@@ -492,6 +492,27 @@ it("invalid utf-8 at end of stream can sometimes produce more than one replaceme
   expect(decoder.end(Buffer.from("9c", "hex"))).toEqual("\uFFFD\uFFFD");
 });
 
+it("end() takes a string or undefined, like write() and then a flush", () => {
+  const decoder = new RealStringDecoder("utf8");
+  decoder.write(Buffer.from([0xe2, 0x82]));
+  const results = { string: decoder.end("abc") };
+  decoder.write(Buffer.from([0xe2]));
+  results.undefined = decoder.end(undefined);
+  results.afterFlush = decoder.end("x");
+  let error;
+  try {
+    decoder.end(null);
+  } catch (err) {
+    error = err.code;
+  }
+  expect({ ...results, error }).toEqual({
+    string: "abc\uFFFD",
+    undefined: "\uFFFD",
+    afterFlush: "x",
+    error: "ERR_INVALID_ARG_TYPE",
+  });
+});
+
 // When the input buffer is too large to be represented as a JS string,
 // write()/end() should throw ERR_STRING_TOO_LONG instead of segfaulting.
 // Previously, Bun__encoding__toString would throw and return an empty JSValue,

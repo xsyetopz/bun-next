@@ -428,15 +428,20 @@ static inline JSC::EncodedJSValue jsStringDecoderPrototypeFunction_endBody(JSC::
 {
     auto& vm = JSC::getVM(lexicalGlobalObject);
     auto throwScope = DECLARE_THROW_SCOPE(vm);
-    if (callFrame->argumentCount() < 1) {
+    auto buffer = callFrame->argument(0);
+    if (buffer.isUndefined()) {
         RELEASE_AND_RETURN(throwScope, JSC::JSValue::encode(castedThis->end(vm, lexicalGlobalObject, nullptr, 0)));
     }
 
-    auto buffer = callFrame->uncheckedArgument(0);
     JSC::JSArrayBufferView* view = dynamicDowncast<JSC::JSArrayBufferView>(buffer);
     if (!view || view->isDetached()) [[unlikely]] {
-        throwVMTypeError(lexicalGlobalObject, throwScope, "Expected Uint8Array"_s);
-        return {};
+        // Node: `end(buf)` is `write(buf)` followed by the flush, and `write` returns a string as is.
+        if (buffer.isString()) {
+            JSString* rest = castedThis->end(vm, lexicalGlobalObject, nullptr, 0);
+            RETURN_IF_EXCEPTION(throwScope, {});
+            RELEASE_AND_RETURN(throwScope, JSC::JSValue::encode(JSC::jsString(lexicalGlobalObject, JSC::asString(buffer), rest)));
+        }
+        return Bun::ERR::INVALID_ARG_TYPE(throwScope, lexicalGlobalObject, "buf"_s, "Buffer, TypedArray, or DataView"_s, buffer);
     }
     if (view->isShared()) [[unlikely]] {
         auto copy = Bun::copySharedBytes(lexicalGlobalObject, throwScope, view->span());
