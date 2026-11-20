@@ -131,10 +131,7 @@ function emitWarningIfNeeded(set: string) {
   }
 }
 
-/** Node also takes a callback that is given the logger once it is made. It is ignored here. */
-function debuglog(set: string, callback?: (fn: (...args: unknown[]) => void) => void): (...args: unknown[]) => void;
-function debuglog(set: string) {
-  set = set.toUpperCase();
+function debuglogImpl(set: string) {
   if (!debugs[set]) {
     if (debugEnvRegex.test(set)) {
       var pid = process.pid;
@@ -148,6 +145,27 @@ function debuglog(set: string) {
     }
   }
   return debugs[set];
+}
+
+/**
+ * Like Node, the section is looked up on the first call or `enabled` read, and `callback`
+ * receives the underlying logger on the first call.
+ */
+function debuglog(set: string, callback?: (fn: (...args: unknown[]) => void) => void) {
+  let debug: ((...args: unknown[]) => void) | undefined;
+  const logger = function () {
+    if (debug === undefined) {
+      debug = debuglogImpl(set.toUpperCase());
+      if ($isCallable(callback)) callback(debug);
+    }
+    debug.$apply(undefined, arguments as unknown as unknown[]);
+  };
+  Object.defineProperty(logger, "enabled", {
+    get: () => debugEnvRegex.test(set.toUpperCase()),
+    configurable: true,
+    enumerable: true,
+  });
+  return logger as typeof logger & { readonly enabled: boolean };
 }
 
 function isBoolean(arg) {

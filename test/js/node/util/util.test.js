@@ -111,6 +111,33 @@ describe("util", () => {
     expect(stdout).toBe("undefined\ncaught x\n");
     expect(exitCode).toBe(0);
   });
+  it("debuglog hands the logger to its callback and reports enabled", async () => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        const util = require("node:util");
+        const seen = [];
+        const on = util.debuglog("bunfoo", fn => seen.push(typeof fn));
+        const off = util.debuglog("other", fn => seen.push(typeof fn));
+        console.log(on.enabled, off.enabled, seen.length);
+        on("hi %d", 1);
+        on("again");
+        off("hidden");
+        console.log(seen.join());
+        `,
+      ],
+      env: { ...bunEnv, NODE_DEBUG: "bunfoo" },
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr: stderr.replace(/ \d+: /g, " PID: ") }).toEqual({
+      stdout: "true false 0\nfunction,function\n",
+      stderr: "BUNFOO PID: hi 1\nBUNFOO PID: again\n",
+    });
+    expect(exitCode).toBe(0);
+  });
   it("inherits", () => {
     function Bar() {}
     Bar.prototype.bar = function () {};

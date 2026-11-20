@@ -66,14 +66,6 @@ function isError(e: unknown): e is Error {
 
 const { shouldColorize } = require("internal/util/colors");
 
-// ---- internal/util/debuglog ----------------------------------------------
-
-function debuglog(set: string, cb?: (fn: (...args: unknown[]) => void) => void) {
-  const fn = util.debuglog(set);
-  if (typeof cb === "function") cb(fn);
-  return fn;
-}
-
 // ---- internal/util/inspector ----------------------------------------------
 
 function sendInspectorCommand<T>(
@@ -381,7 +373,7 @@ export default {
   // internal/util/colors
   shouldColorize,
   // internal/util/debuglog
-  debuglog,
+  debuglog: util.debuglog,
   // internal/util/inspector
   sendInspectorCommand,
   // internal/util/types
