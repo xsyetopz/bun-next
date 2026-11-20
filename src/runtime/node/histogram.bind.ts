@@ -32,6 +32,14 @@ export const HistogramJSON = b.dictionary({
   percentiles: b.any,
 });
 
+export const ConfidenceOptions = b.dictionary(
+  { confidence: { type: b.f64.default(0.95), expected: ["number"] } },
+  { fromJS: true, reportedAs: "options" },
+);
+const result = { nullPrototype: true } as const;
+export const MeanCI = b.dictionary({ mean: b.f64, lower: b.f64, upper: b.f64 }, result);
+export const PercentileCI = b.dictionary({ value: b.u64, lower: b.u64, upper: b.u64 }, result);
+
 /** https://github.com/nodejs/node/blob/v26.3.0/lib/internal/histogram.js */
 export const Histogram = b.class({
   ...nodeClass,
@@ -94,6 +102,23 @@ export const Histogram = b.class({
       expected: { other: ["Histogram"] },
       returns: b.self,
       capability: "heap",
+      throws: true,
+    },
+    /** The mean, and the bounds that it lies between with probability `options.confidence`. */
+    meanCI: {
+      args: { options: b.any },
+      length: 0,
+      returns: MeanCI,
+      capability: "js",
+      throws: true,
+    },
+    /** The value at `percentile`, and the values that it lies between with probability `options.confidence`. */
+    percentileCI: {
+      args: { percentile: b.f64, options: b.any },
+      length: 1,
+      expected: { percentile: ["number"] },
+      returns: PercentileCI,
+      capability: "js",
       throws: true,
     },
     /** The largest gap between the cumulative distributions of this and `other`, from 0 to 1. */

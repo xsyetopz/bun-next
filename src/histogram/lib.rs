@@ -12,8 +12,10 @@
 //! the lower half is what the earlier buckets cover. So a value is known to within one slot, and every result
 //! is an edge or the middle of a slot.
 //!
-//! Nothing in the histogram depends on the platform's `libm`: the only float operations are the IEEE-exact ones.
+//! The counts and the moments use only the IEEE-exact float operations. The moving averages and the statistical tests
+//! take `exp`, `ln`, `ln_gamma` and `erfc` from the platform's `libm`, as Node.js does.
 
+#![feature(float_gamma)]
 #![forbid(unsafe_code)]
 #![deny(
     clippy::indexing_slicing,
@@ -25,6 +27,7 @@
 
 mod buckets;
 mod compare;
+mod confidence;
 mod ewma;
 pub use ewma::Ewma;
 

@@ -304,6 +304,57 @@ describe("Histogram", () => {
     });
   });
 
+  describe("confidence intervals", () => {
+    const of = (values: number[]) => {
+      const h = createHistogram() as any;
+      for (const value of values) h.record(value);
+      return h;
+    };
+    const rounded = (result: object) =>
+      JSON.parse(JSON.stringify(result, (_, value) => (typeof value === "number" ? +value.toFixed(5) : value)));
+
+    test("meanCI is the interval of Student's t-distribution", () => {
+      const ci = of([1, 2, 3, 4, 5]).meanCI();
+      assert.strictEqual(Object.getPrototypeOf(ci), null);
+      assert.deepStrictEqual(rounded(ci), { mean: 3, lower: 1.03676, upper: 4.96324 });
+      assert.deepStrictEqual(rounded(of([1, 2, 3, 4, 5]).meanCI({ confidence: 0.5 })).lower, 2.47625);
+      assert.deepStrictEqual({ ...of([7]).meanCI() }, { mean: 7, lower: NaN, upper: NaN });
+      assert.deepStrictEqual({ ...of([7, 7]).meanCI() }, { mean: 7, lower: 7, upper: 7 });
+    });
+
+    test("percentileCI is the interval of the binomial distribution", () => {
+      const h = of(Array.from({ length: 100 }, (_, i) => i + 1));
+      assert.deepStrictEqual({ ...h.percentileCI(50) }, { value: 50, lower: 40, upper: 61 });
+      assert.deepStrictEqual({ ...of([9]).percentileCI(50) }, { value: 9, lower: 9, upper: 9 });
+    });
+
+    test("validate their arguments", () => {
+      const h = of([1, 2]);
+      for (const confidence of [0, 1, NaN]) {
+        assert.throws(() => h.meanCI({ confidence }), { code: "ERR_OUT_OF_RANGE", message: /"options\.confidence"/ });
+        assert.throws(() => h.percentileCI(50, { confidence }), { code: "ERR_OUT_OF_RANGE" });
+      }
+      const notNumber = {
+        code: "ERR_INVALID_ARG_TYPE",
+        message: "The \"options.confidence\" property must be of type number. Received type string ('0.9')",
+      };
+      const notObject = {
+        code: "ERR_INVALID_ARG_TYPE",
+        message: 'The "options" argument must be of type object. Received null',
+      };
+      assert.throws(() => h.meanCI({ confidence: "0.9" }), notNumber);
+      assert.throws(() => h.percentileCI(50, { confidence: "0.9" }), notNumber);
+      assert.throws(() => h.meanCI(null), notObject);
+      assert.throws(() => h.percentileCI(50, null), notObject);
+      for (const options of [[], () => {}, 1]) {
+        assert.throws(() => h.meanCI(options), { code: "ERR_INVALID_ARG_TYPE" });
+        assert.throws(() => h.percentileCI(50, options), { code: "ERR_INVALID_ARG_TYPE" });
+      }
+      assert.throws(() => h.percentileCI("50"), { code: "ERR_INVALID_ARG_TYPE" });
+      assert.throws(() => h.percentileCI(0, null), { code: "ERR_OUT_OF_RANGE", message: /"percentile"/ });
+    });
+  });
+
   describe("skewness and kurtosis", () => {
     test("are the standardized third and fourth moments", () => {
       const h = createHistogram();
@@ -1784,8 +1835,10 @@ describe("Histogram", () => {
         "ksTest/1",
         "linearBuckets/1",
         "logBuckets/2",
+        "meanCI/0",
         "percentile/1",
         "percentileBigInt/1",
+        "percentileCI/1",
         "percentilesAt/1",
         "reset/0",
         "snapshot/0",

@@ -12,7 +12,9 @@ use bun_jsc::bindgen::{self, JsHeap, JsLocal, JsPayload as _, JsScope, JsWrapper
 use bun_jsc::{ErrorCode, JSGlobalObject, JSMap, JSValue, JsResult, MAX_SAFE_INTEGER};
 use bun_threading::Guarded;
 
-use crate::generated_bindgen::histogram::{HistogramJSON, js_ELDHistogram, js_RecordableHistogram};
+use crate::generated_bindgen::histogram::{
+    ConfidenceOptions, HistogramJSON, MeanCI, PercentileCI, js_ELDHistogram, js_RecordableHistogram,
+};
 use crate::jsc_hooks::timer_all;
 use crate::node::util::validators;
 
@@ -266,17 +268,9 @@ impl Histogram {
         heap: &JsHeap<'a>,
         slo_target: f64,
     ) -> bindgen::Result<'a, f64> {
-        if !(slo_target > 0.0 && slo_target < 1.0) {
-            let options = OutOfRangeOptions {
-                field_name: b"sloTarget",
-                msg: b"> 0 && < 1",
-                ..Default::default()
-            };
-            return Err(heap.error_with_code(
-                ErrorCode::OUT_OF_RANGE,
-                format_args!("{}", out_of_range(NodeNumber(slo_target), options)),
-            ));
-        }
+        check_range(heap, slo_target, b"sloTarget", b"> 0 && < 1", |t| {
+            t > 0.0 && t < 1.0
+        })?;
         Ok(self.get_ewma_error_rate() / (1.0 - slo_target))
     }
 
@@ -305,18 +299,39 @@ impl Histogram {
         heap: &JsHeap<'a>,
         percentile: f64,
     ) -> bindgen::Result<'a, u64> {
-        if !(percentile > 0.0 && percentile <= 100.0) {
-            let options = OutOfRangeOptions {
-                field_name: b"percentile",
-                msg: b"> 0 && <= 100",
-                ..Default::default()
-            };
-            return Err(heap.error_with_code(
-                ErrorCode::OUT_OF_RANGE,
-                format_args!("{}", out_of_range(NodeNumber(percentile), options)),
-            ));
-        }
+        check_range(heap, percentile, b"percentile", b"> 0 && <= 100", |p| {
+            p > 0.0 && p <= 100.0
+        })?;
         Ok(self.read(|histogram| histogram.value_at_percentile(percentile)))
+    }
+
+    pub(crate) fn mean_ci<'a>(
+        &self,
+        cx: &mut JsScope<'a>,
+        options: JsLocal<'a>,
+    ) -> bindgen::Result<'a, MeanCI> {
+        let confidence = check_confidence(cx, options)?;
+        let [mean, lower, upper] = self.read(|histogram| histogram.mean_ci(confidence));
+        Ok(MeanCI { mean, lower, upper })
+    }
+
+    pub(crate) fn percentile_ci<'a>(
+        &self,
+        cx: &mut JsScope<'a>,
+        percentile: f64,
+        options: JsLocal<'a>,
+    ) -> bindgen::Result<'a, PercentileCI> {
+        check_range(&cx.heap, percentile, b"percentile", b"> 0 && <= 100", |p| {
+            p > 0.0 && p <= 100.0
+        })?;
+        let confidence = check_confidence(cx, options)?;
+        let [value, lower, upper] =
+            self.read(|histogram| histogram.percentile_ci(percentile, confidence));
+        Ok(PercentileCI {
+            value,
+            lower,
+            upper,
+        })
     }
 
     /// Node.js: 1 at every percentile if the histogram is empty.
@@ -642,6 +657,51 @@ impl Histogram {
             }
         }
     }
+}
+
+/// `ERR_OUT_OF_RANGE` unless `value` is `within`.
+fn check_range<'a>(
+    heap: &JsHeap<'a>,
+    value: f64,
+    field_name: &'static [u8],
+    msg: &'static [u8],
+    within: impl Fn(f64) -> bool,
+) -> bindgen::Result<'a, ()> {
+    if within(value) {
+        return Ok(());
+    }
+    let options = OutOfRangeOptions {
+        field_name,
+        msg,
+        ..Default::default()
+    };
+    Err(heap.error_with_code(
+        ErrorCode::OUT_OF_RANGE,
+        format_args!("{}", out_of_range(NodeNumber(value), options)),
+    ))
+}
+
+/// `options.confidence`, validated as Node.js's `validateObject()` and `validateNumber()` do.
+fn check_confidence<'a>(cx: &mut JsScope<'a>, options: JsLocal<'a>) -> bindgen::Result<'a, f64> {
+    let options = options.to_js();
+    let options = if options.is_undefined() {
+        ConfidenceOptions::default()
+    } else if !options.is_object() || options.is_array() || options.is_callable() {
+        Err(cx
+            .global()
+            .throw_invalid_argument_type_value(b"options", b"object", options))?
+    } else {
+        ConfidenceOptions::from_js(cx.global(), options)?
+    };
+    let confidence = options.confidence;
+    check_range(
+        &cx.heap,
+        confidence,
+        b"options.confidence",
+        b"> 0 && < 1",
+        |c| c > 0.0 && c < 1.0,
+    )?;
+    Ok(confidence)
 }
 
 /// `value`, a BigInt, if it is at least `min` and fits in an `i64`.

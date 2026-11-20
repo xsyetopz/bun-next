@@ -131,7 +131,7 @@ Each module below also loads under the `bun:` prefix: `bun:fs` is `node:fs` and 
 
 ### [`node:perf_hooks`](https://nodejs.org/api/perf_hooks.html)
 
-🟡 `monitorEventLoopDelay()`, `createHistogram()`, `timerify()` and `PerformanceObserver` (`mark`, `measure`, `function`, `net`, `http` and `http2` entries) are implemented. Bun never emits `gc`, `dns` or `resource` entries. `eventLoopUtilization()` always returns zeros, and `performance.nodeTiming` holds placeholder values. The Node-specific additions to the global `performance` object only appear once `node:perf_hooks` has been imported. Histograms are missing `export()`, the statistics added in Node.js 26 (`meanCI()`, `percentileCI()`, `qrde()`, `welchTest()` and `mannWhitneyTest()`), `importHistogram()` and `createSlidingWindowHistogram()`.
+🟡 `monitorEventLoopDelay()`, `createHistogram()`, `timerify()` and `PerformanceObserver` (`mark`, `measure`, `function`, `net`, `http` and `http2` entries) are implemented. Bun never emits `gc`, `dns` or `resource` entries. `eventLoopUtilization()` always returns zeros, and `performance.nodeTiming` holds placeholder values. The Node-specific additions to the global `performance` object only appear once `node:perf_hooks` has been imported. Histograms are missing `export()`, `qrde()`, `welchTest()`, `mannWhitneyTest()`, `importHistogram()` and `createSlidingWindowHistogram()`.
 
 ### [`node:process`](https://nodejs.org/api/process.html)
 
