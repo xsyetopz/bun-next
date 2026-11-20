@@ -19,6 +19,11 @@ interface WASIBindings {
 }
 
 interface WASIConfig {
+  version?: "unstable" | "preview1";
+  returnOnExit?: boolean;
+  stdin?: number;
+  stdout?: number;
+  stderr?: number;
   args?: string[];
   env?: Record<string, string>;
   preopens?: Record<string, string>;
@@ -27,6 +32,10 @@ interface WASIConfig {
   getStdin?: () => Buffer | undefined;
   sendStdout?: (data: Uint8Array) => void;
   sendStderr?: (data: Uint8Array) => void;
+}
+
+interface WASIInstance {
+  exports: { memory?: WebAssembly.Memory; _start?: () => void; _initialize?: () => void } | null;
 }
 
 /** What the `wasiImport` functions catch: a `WASIError`, or a `node:fs` error (possibly chained through `prev`). */
@@ -571,7 +580,16 @@ function getDefaults() {
   });
 }
 
+const WASI_NAMESPACES = { unstable: "wasi_unstable", preview1: "wasi_snapshot_preview1" } as const;
+const kExit = Symbol("kExit");
+const kExitCode = Symbol("kExitCode");
+const kStarted = Symbol("kStarted");
+const kNamespace = Symbol("kNamespace");
+
 class WASI {
+  declare [kExitCode]: number;
+  declare [kStarted]: boolean;
+  declare [kNamespace]: (typeof WASI_NAMESPACES)[keyof typeof WASI_NAMESPACES] | undefined;
   declare lastStdin: number;
   declare sleep: ((ms: number) => void) | undefined;
   declare getStdin: ((this: WASI) => Buffer | undefined) | undefined;
@@ -586,6 +604,23 @@ class WASI {
   declare stdinBuffer: Buffer | undefined;
 
   constructor(wasiConfig: WASIConfig = {}) {
+    const { validateObject, validateString, validateBoolean, validateInt32 } = require("internal/validators");
+    validateObject(wasiConfig, "options");
+    // Node requires `version`; Bun keeps accepting its absence and then picks the namespace from the module.
+    const { version, returnOnExit = true, stdin = 0, stdout = 1, stderr = 2 } = wasiConfig;
+    if (version !== undefined) {
+      validateString(version, "options.version");
+      if (!Object.hasOwn(WASI_NAMESPACES, version)) {
+        throw $ERR_INVALID_ARG_VALUE("options.version", version, "unsupported WASI version");
+      }
+    }
+    validateBoolean(returnOnExit, "options.returnOnExit");
+    validateInt32(stdin, "options.stdin", 0);
+    validateInt32(stdout, "options.stdout", 0);
+    validateInt32(stderr, "options.stderr", 0);
+    this[kNamespace] = version === undefined ? undefined : WASI_NAMESPACES[version];
+    this[kExitCode] = 0;
+    this[kStarted] = false;
     const defaultConfig = getDefaults();
     this.lastStdin = 0;
     this.sleep = wasiConfig.sleep || defaultConfig.sleep;
@@ -605,7 +640,7 @@ class WASI {
       [
         WASI_STDIN_FILENO,
         {
-          real: 0,
+          real: stdin,
           filetype: WASI_FILETYPE_CHARACTER_DEVICE,
           rights: {
             base: STDIN_DEFAULT_RIGHTS,
@@ -617,7 +652,7 @@ class WASI {
       [
         WASI_STDOUT_FILENO,
         {
-          real: 1,
+          real: stdout,
           filetype: WASI_FILETYPE_CHARACTER_DEVICE,
           rights: {
             base: STDOUT_DEFAULT_RIGHTS,
@@ -629,7 +664,7 @@ class WASI {
       [
         WASI_STDERR_FILENO,
         {
-          real: 2,
+          real: stderr,
           filetype: WASI_FILETYPE_CHARACTER_DEVICE,
           rights: {
             base: STDERR_DEFAULT_RIGHTS,
@@ -1651,8 +1686,12 @@ class WASI {
         return WASI_ESUCCESS;
       },
       proc_exit: (rval: number) => {
-        bindings.exit(rval);
-        return WASI_ESUCCESS;
+        if (!returnOnExit) {
+          bindings.exit(rval);
+          return WASI_ESUCCESS;
+        }
+        this[kExitCode] = rval;
+        throw kExit;
       },
       proc_raise: (sig: number) => {
         if (!(sig in SIGNAL_MAP)) {
@@ -1744,24 +1783,45 @@ class WASI {
   setMemory(memory: WebAssembly.Memory) {
     this.memory = memory;
   }
-  start(
-    instance: { exports: { memory?: WebAssembly.Memory; _start?: () => void } | null },
-    memory?: WebAssembly.Memory | null,
-  ) {
-    const exports2 = instance.exports;
-    if (exports2 === null || typeof exports2 !== "object") {
-      throw new Error(`instance.exports must be an Object. Received ${exports2}.`);
-    }
-    if (memory == null) {
-      memory = exports2.memory;
-      if (!(memory instanceof WebAssembly.Memory)) {
-        throw new Error(`instance.exports.memory must be a WebAssembly.Memory. Recceived ${memory}.`);
-      }
+  #finalizeBindings(instance: WASIInstance, memory: WebAssembly.Memory | null | undefined) {
+    if (this[kStarted]) throw $ERR_WASI_ALREADY_STARTED();
+    const { validateObject } = require("internal/validators");
+    validateObject(instance, "instance");
+    const exports = instance.exports;
+    validateObject(exports, "instance.exports");
+    memory ??= exports!.memory;
+    if (!(memory instanceof WebAssembly.Memory)) {
+      throw $ERR_INVALID_ARG_TYPE("instance.exports.memory", "WebAssembly.Memory", memory);
     }
     this.setMemory(memory);
-    if (exports2._start) {
-      exports2._start();
+    this[kStarted] = true;
+    return exports!;
+  }
+  /** Runs a command module and returns its exit code. `memory` is a Bun extension. */
+  start(instance: WASIInstance, memory?: WebAssembly.Memory | null) {
+    const { _start, _initialize } = this.#finalizeBindings(instance, memory);
+    const { validateFunction } = require("internal/validators");
+    validateFunction(_start, "instance.exports._start");
+    if (_initialize !== undefined) throw $ERR_INVALID_ARG_TYPE("instance.exports._initialize", "undefined", _initialize);
+    try {
+      _start!();
+    } catch (err) {
+      if (err !== kExit) throw err;
     }
+    return this[kExitCode];
+  }
+  /** Sets up a reactor module by calling its `_initialize` export, if it has one. */
+  initialize(instance: WASIInstance) {
+    const { _start, _initialize } = this.#finalizeBindings(instance, undefined);
+    if (_start !== undefined) throw $ERR_INVALID_ARG_TYPE("instance.exports._start", "undefined", _start);
+    if (_initialize !== undefined) {
+      require("internal/validators").validateFunction(_initialize, "instance.exports._initialize");
+      _initialize();
+    }
+  }
+  /** The import object for `WebAssembly.instantiate`, keyed by the namespace of `options.version`. */
+  getImportObject() {
+    return { [this[kNamespace] ?? WASI_NAMESPACES.preview1]: this.wasiImport };
   }
   getImports(module2: WebAssembly.Module) {
     let namespace: string | null = null;

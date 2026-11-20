@@ -2614,6 +2614,8 @@ JSC_DEFINE_HOST_FUNCTION_WITH_ATTRIBUTES(Bun::jsFunctionMakeErrorWithCode, __att
         return JSC::JSValue::encode(createError(globalObject, ErrorCode::ERR_INSPECTOR_NOT_CONNECTED, "Session is not connected"_s));
     case ErrorCode::ERR_INSPECTOR_NOT_WORKER:
         return JSC::JSValue::encode(createError(globalObject, ErrorCode::ERR_INSPECTOR_NOT_WORKER, "Current thread is not a worker"_s));
+    case ErrorCode::ERR_WASI_ALREADY_STARTED:
+        return JSC::JSValue::encode(createError(globalObject, ErrorCode::ERR_WASI_ALREADY_STARTED, "WASI instance has already started"_s));
     case ErrorCode::ERR_SERVER_ALREADY_LISTEN:
         return JSC::JSValue::encode(createError(globalObject, ErrorCode::ERR_SERVER_ALREADY_LISTEN, "Listen method has been called more than once without closing."_s));
     case ErrorCode::ERR_SOCKET_CLOSED:

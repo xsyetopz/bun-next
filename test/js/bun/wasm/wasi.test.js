@@ -24,6 +24,76 @@ it("Should support printing 'hello world'", () => {
   });
 });
 
+/** A module importing `wasi_snapshot_preview1.proc_exit` and exporting `memory` and `exportName`, whose body is `body`. */
+function wasiModule(exportName, body) {
+  const str = s => [s.length, ...Buffer.from(s)];
+  const section = (id, bytes) => [id, bytes.length, ...bytes];
+  // prettier-ignore
+  return new WebAssembly.Module(new Uint8Array([
+    0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00,
+    ...section(1, [0x02, 0x60, 0x01, 0x7f, 0x00, 0x60, 0x00, 0x00]),
+    ...section(2, [0x01, ...str("wasi_snapshot_preview1"), ...str("proc_exit"), 0x00, 0x00]),
+    ...section(3, [0x01, 0x01]),
+    ...section(5, [0x01, 0x00, 0x01]),
+    ...section(7, [0x02, ...str("memory"), 0x02, 0x00, ...str(exportName), 0x00, 0x01]),
+    ...section(10, [0x01, body.length + 2, 0x00, ...body, 0x0b]),
+  ]));
+}
+const exitWith7 = [0x41, 0x07, 0x10, 0x00]; // proc_exit(7)
+const store42At0 = [0x41, 0x00, 0x41, 0x2a, 0x36, 0x02, 0x00]; // i32.store(0, 42)
+const codeOf = fn => {
+  try {
+    fn();
+  } catch (err) {
+    return err.code;
+  }
+};
+
+it("start returns the exit code that the command module passes to proc_exit", () => {
+  const wasi = new WASI({ version: "preview1" });
+  const instance = new WebAssembly.Instance(wasiModule("_start", exitWith7), wasi.getImportObject());
+  expect({
+    namespaces: Object.keys(wasi.getImportObject()).concat(Object.keys(new WASI({ version: "unstable" }).getImportObject())),
+    exitCode: wasi.start(instance),
+    again: codeOf(() => wasi.start(instance)),
+  }).toEqual({
+    namespaces: ["wasi_snapshot_preview1", "wasi_unstable"],
+    exitCode: 7,
+    again: "ERR_WASI_ALREADY_STARTED",
+  });
+});
+
+it("initialize runs a reactor module's _initialize and refuses a command module", () => {
+  const wasi = new WASI({ version: "preview1" });
+  const reactor = new WebAssembly.Instance(wasiModule("_initialize", store42At0), wasi.getImportObject());
+  const command = new WebAssembly.Instance(wasiModule("_start", exitWith7), wasi.getImportObject());
+  expect({
+    initialized: wasi.initialize(reactor),
+    stored: new Uint32Array(reactor.exports.memory.buffer)[0],
+    command: codeOf(() => new WASI({ version: "preview1" }).initialize(command)),
+    startReactor: codeOf(() => new WASI({ version: "preview1" }).start(reactor)),
+  }).toEqual({
+    initialized: undefined,
+    stored: 42,
+    command: "ERR_INVALID_ARG_TYPE",
+    startReactor: "ERR_INVALID_ARG_TYPE",
+  });
+});
+
+it("the constructor validates version, returnOnExit and the stdio descriptors", () => {
+  expect({
+    preview2: codeOf(() => new WASI({ version: "preview2" })),
+    number: codeOf(() => new WASI({ version: 1 })),
+    returnOnExit: codeOf(() => new WASI({ version: "preview1", returnOnExit: "yes" })),
+    stdout: codeOf(() => new WASI({ version: "preview1", stdout: -1 })),
+  }).toEqual({
+    preview2: "ERR_INVALID_ARG_VALUE",
+    number: "ERR_INVALID_ARG_TYPE",
+    returnOnExit: "ERR_INVALID_ARG_TYPE",
+    stdout: "ERR_OUT_OF_RANGE",
+  });
+});
+
 it("fd_fdstat_set_rights only narrows the rights of a descriptor", () => {
   using dir = tempDir("wasi-set-rights", {
     "inside.txt": "inside",
