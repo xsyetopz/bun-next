@@ -276,6 +276,12 @@ pub(crate) fn set_ref(enabled: bool) {
     }
 }
 
+pub(crate) fn set_channel_ref(process_handle: Option<&Subprocess>, enabled: bool) {
+    if let Some(ipc) = process_handle.and_then(Subprocess::ipc) {
+        ipc.set_channel_ref(VirtualMachine::get().global(), enabled);
+    }
+}
+
 // HOST_EXPORT(Bun__refChannelUnlessOverridden, c)
 pub(crate) fn ref_channel_unless_overridden(global: &JSGlobalObject) {
     let vm = global.bun_vm();

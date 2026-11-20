@@ -899,6 +899,8 @@ pub(crate) struct SendQueue {
 
     pub(crate) retry_count: Cell<u32>,
     pub(crate) keep_alive: KeepAlive,
+    /// A `child_process` channel keeps the parent alive while it is open, until `channel.unref()`.
+    pub(crate) channel_ref: Cell<bool>,
     #[cfg(debug_assertions)]
     pub(crate) has_written_version: Cell<u8>,
     pub(crate) mode: Mode,
@@ -1024,6 +1026,7 @@ impl SendQueue {
             waiting_for_ack: JsCell::new(None),
             retry_count: Cell::new(0),
             keep_alive: KeepAlive::default(),
+            channel_ref: Cell::new(false),
             #[cfg(debug_assertions)]
             has_written_version: Cell::new(0),
             mode,
@@ -1382,6 +1385,9 @@ impl SendQueue {
     }
 
     fn should_ref(&self) -> bool {
+        if self.channel_ref.get() && self.socket_is_open() {
+            return true;
+        }
         if self.waiting_for_ack.get().is_some() {
             return true; // waiting to receive an ack/nack from the other side
         }
@@ -1390,6 +1396,11 @@ impl SendQueue {
         }
         // Anything still queued (including head with cursor==0 under backpressure) must keep the loop alive; a closed socket does not.
         self.socket_is_open()
+    }
+
+    pub(crate) fn set_channel_ref(&self, global: &JSGlobalObject, enabled: bool) {
+        self.channel_ref.set(enabled);
+        self.update_ref(global);
     }
 
     pub(crate) fn update_ref(&self, global: &JSGlobalObject) {

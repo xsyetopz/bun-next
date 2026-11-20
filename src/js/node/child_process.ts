@@ -1,6 +1,7 @@
 // Hardcoded module "node:child_process"
 const EventEmitter = require("node:events");
 const { kHandle } = require("internal/shared");
+const setChannelRef = $bindgen("node_cluster_binding.bind.ts", "setChannelRef");
 const {
   validateBoolean,
   validateFunction,
@@ -1521,7 +1522,7 @@ class ChildProcess extends EventEmitter {
       if (has_ipc) {
         this.send = this.#send;
         this.disconnect = this.#disconnect;
-        this.channel = new Control();
+        this.channel = new Control(this.#handle);
         Object.defineProperty(this, "_channel", {
           get() {
             return this.channel;
@@ -1932,8 +1933,20 @@ function abortChildProcess(child: ChildProcess, killSignal: string | number | un
 }
 
 class Control extends EventEmitter {
-  constructor() {
+  #handle;
+
+  constructor(handle) {
     super();
+    this.#handle = handle;
+    setChannelRef(handle, true);
+  }
+
+  ref() {
+    setChannelRef(this.#handle, true);
+  }
+
+  unref() {
+    setChannelRef(this.#handle, false);
   }
 }
 

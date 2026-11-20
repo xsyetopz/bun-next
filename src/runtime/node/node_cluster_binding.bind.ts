@@ -36,6 +36,8 @@ export const sendHelperPrimary = b.fn({
   capability: "js",
   throws: true,
 });
+/** `subprocess.channel.ref()`/`unref()`: whether the open channel keeps the parent alive. */
+export const setChannelRef = b.fn({ args: { processHandle, enabled: b.bool } });
 export const onInternalMessagePrimary = b.fn({
   args: { handle: processHandle, worker: b.any, callback: b.any },
   capability: "js",
