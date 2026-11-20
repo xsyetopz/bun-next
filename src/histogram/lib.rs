@@ -24,6 +24,7 @@
 )]
 
 mod buckets;
+mod compare;
 mod ewma;
 pub use ewma::Ewma;
 

@@ -264,6 +264,46 @@ describe("Histogram", () => {
     });
   });
 
+  describe("ksTest, cohensD and cliffsD", () => {
+    const of = (values: number[], options?: object) => {
+      const h = createHistogram(options) as any;
+      for (const value of values) h.record(value);
+      return h;
+    };
+
+    test("compare the values of two histograms", () => {
+      const low = of([1, 2, 3, 4]);
+      const high = of([3, 4, 5, 6]);
+      assert.deepStrictEqual(
+        [low.ksTest(high), low.cliffsD(high), high.cliffsD(low), low.cohensD(high).toFixed(6)],
+        [0.5, -0.75, 0.75, "-1.549193"],
+      );
+    });
+
+    test("are 0 for the same values, too few values or values that do not differ", () => {
+      const h = of([1, 2, 3]);
+      assert.deepStrictEqual([h.ksTest(h), h.cohensD(h), h.cliffsD(h)], [0, 0, 0]);
+      assert.deepStrictEqual([h.ksTest(of([])), h.cohensD(of([5])), h.cliffsD(of([]))], [0, 0, 0]);
+      assert.strictEqual(of([2, 2]).cohensD(of([2, 2])), 0);
+      const delay = monitorEventLoopDelay();
+      assert.deepStrictEqual([delay.ksTest(h), h.cliffsD(delay)], [0, 0]);
+    });
+
+    test("line the slots up by value", notInNode, () => {
+      const unit = of([2, 4]);
+      const wide = of([2, 4], { lowest: 2 });
+      assert.deepStrictEqual([unit.ksTest(wide), unit.cliffsD(wide)], [0, 0]);
+    });
+
+    test("validate other", () => {
+      for (const other of [undefined, {}, 1]) {
+        for (const method of ["ksTest", "cohensD", "cliffsD"]) {
+          assert.throws(() => of([1])[method](other), { code: "ERR_INVALID_ARG_TYPE" });
+        }
+      }
+    });
+  });
+
   describe("skewness and kurtosis", () => {
     test("are the standardized third and fourth moments", () => {
       const h = createHistogram();
@@ -1719,6 +1759,8 @@ describe("Histogram", () => {
         "burnRate/1",
         "ccdf/1",
         "cdf/1",
+        "cliffsD/1",
+        "cohensD/1",
         "countAt/1",
         "diff/1",
         "get count",
@@ -1739,6 +1781,7 @@ describe("Histogram", () => {
         "get resetCount",
         "get skewness",
         "get stddev",
+        "ksTest/1",
         "linearBuckets/1",
         "logBuckets/2",
         "percentile/1",

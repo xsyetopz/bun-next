@@ -15,6 +15,8 @@ const atValue = { args: { value: b.f64 }, expected: { value: ["number"] }, retur
 /** It can make the counts grow, which it tells the GC of the object. */
 const grows = { passThis: true, capability: "heap" } as const;
 
+const compared = { args: { other: b.self }, expected: { other: ["Histogram"] }, returns: b.f64 } as const;
+
 export const HistogramJSON = b.dictionary({
   count: b.u64,
   min: b.u64,
@@ -94,6 +96,12 @@ export const Histogram = b.class({
       capability: "heap",
       throws: true,
     },
+    /** The largest gap between the cumulative distributions of this and `other`, from 0 to 1. */
+    ksTest: compared,
+    /** How far the mean of this is above that of `other`, in pooled sample standard deviations. */
+    cohensD: compared,
+    /** Of the pairs of a value of this and one of `other`, the share where this is larger, less the share where it is smaller. */
+    cliffsD: compared,
     reset: {},
     toJSON: { returns: HistogramJSON, capability: "heap", throws: true },
     "@@inspectCustom": { builtin: true, length: 2 },

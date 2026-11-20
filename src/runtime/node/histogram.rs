@@ -422,6 +422,28 @@ impl Histogram {
         Self::detached(self.read_state(State::clone)).into_js(heap)
     }
 
+    pub(crate) fn ks_test(&self, other: &Histogram) -> f64 {
+        self.compare(other, bun_histogram::Histogram::ks_test)
+    }
+
+    pub(crate) fn cohens_d(&self, other: &Histogram) -> f64 {
+        self.compare(other, bun_histogram::Histogram::cohens_d)
+    }
+
+    pub(crate) fn cliffs_d(&self, other: &Histogram) -> f64 {
+        self.compare(other, bun_histogram::Histogram::cliffs_d)
+    }
+
+    /// Compares a copy of `other`, so that this holds one lock at a time.
+    fn compare(
+        &self,
+        other: &Histogram,
+        f: impl FnOnce(&bun_histogram::Histogram, &bun_histogram::Histogram) -> f64,
+    ) -> f64 {
+        let other = other.read(Clone::clone);
+        self.read(|this| f(this, &other))
+    }
+
     /// What was recorded here since `other` was a snapshot of it.
     pub(crate) fn diff<'a>(
         &self,
