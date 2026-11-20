@@ -38,16 +38,44 @@ describe.concurrent("node-module-module", () => {
   });
 
   test("isBuiltin() answers bun: + a bare Node builtin name like that builtin", () => {
-    const names = ["bun:fs", "bun:fs/promises", "bun:sys", "bun:sqlite", "bun:test", "bun:node:fs", "bun:bacon"];
+    const names = [
+      "bun:fs",
+      "bun:fs/promises",
+      "bun:sys",
+      "bun:quic",
+      "bun:sqlite",
+      "bun:test",
+      "bun:node:fs",
+      "bun:bacon",
+    ];
     expect(Object.fromEntries(names.map(name => [name, isBuiltin(name)]))).toEqual({
       "bun:fs": true,
       "bun:fs/promises": true,
       "bun:sys": true,
+      "bun:quic": true,
       "bun:sqlite": true,
       "bun:test": true,
       "bun:node:fs": false,
       "bun:bacon": false,
     });
+  });
+
+  test("bun: + a Node builtin that has no bare name loads that builtin", async () => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `const fromImport = await import("bun:quic");
+        console.log(require("bun:quic") === require("node:quic"), fromImport.connect === require("node:quic").connect);
+        console.log(require.resolve("bun:quic"), import.meta.resolve("bun:quic"));
+        console.log(require("bun:test") === require("node:test"));`,
+      ],
+      env: bunEnv,
+      stderr: "pipe",
+    });
+    const [stdout, exitCode] = await Promise.all([proc.stdout.text(), proc.exited]);
+    expect(stdout).toBe("true true\nnode:quic bun:quic\nfalse\n");
+    expect(exitCode).toBe(0);
   });
 
   test("isPreloading is true only while --require preloads run", async () => {

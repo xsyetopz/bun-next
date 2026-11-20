@@ -126,6 +126,10 @@ declare module "bun:punycode" {
   import m = require("node:punycode");
   export = m;
 }
+declare module "bun:quic" {
+  import m = require("node:quic");
+  export = m;
+}
 declare module "bun:querystring" {
   import m = require("node:querystring");
   export = m;

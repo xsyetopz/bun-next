@@ -9,6 +9,8 @@ import { setTimeout as sleep } from "bun:timers/promises";
 import * as nodeCrypto from "node:crypto";
 import * as nodeFs from "node:fs";
 import * as bunFs from "bun:fs";
+import * as bunQuic from "bun:quic";
+import * as nodeQuic from "node:quic";
 import { expectType } from "./utilities";
 
 assert.equal(path.join("a", "b"), "a/b");
@@ -21,3 +23,4 @@ expectType(sleep(1, 1)).is<Promise<number>>();
 expectType<IncomingMessage["headers"]>().is<import("node:http").IncomingHttpHeaders>();
 expectType(bunFs).is<typeof nodeFs>();
 expectType(bunCrypto).is<typeof nodeCrypto>();
+expectType(bunQuic).is<typeof nodeQuic>();

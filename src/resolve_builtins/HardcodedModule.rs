@@ -978,9 +978,21 @@ impl Alias {
     #[cold]
     #[inline(never)]
     fn bare_node_builtin(name: &[u8]) -> Option<&[u8]> {
-        (!name.starts_with(b"node:")
-            && !is_stream_iter_alias(name)
-            && lookup(&NODE_ALIAS_MAP, name).is_some())
-        .then_some(name)
+        if name.starts_with(b"node:") || is_stream_iter_alias(name) {
+            return None;
+        }
+        if lookup(&NODE_ALIAS_MAP, name).is_some() {
+            return Some(name);
+        }
+        // A builtin with no bare name (`node:quic`), unless Bun has its own module of that name (`bun:test`).
+        COMMON_ALIAS_KVS
+            .iter()
+            .find(|(key, alias)| alias.node_only_prefix && key.strip_prefix(b"node:") == Some(name))
+            .filter(|_| {
+                !BUN_EXTRA_ALIAS_KVS
+                    .iter()
+                    .any(|(key, _)| key.strip_prefix(b"bun:") == Some(name))
+            })
+            .map(|(key, _)| *key)
     }
 }

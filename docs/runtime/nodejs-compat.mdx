@@ -11,6 +11,8 @@ We update this page regularly. It reflects the latest version of Bun's compatibi
 
 ## Built-in Node.js modules
 
+Each module below also loads under the `bun:` prefix: `bun:fs` is `node:fs` and `bun:quic` is `node:quic`. The exceptions are `bun:test` and `bun:sqlite`, which are Bun's own test runner and SQLite driver rather than `node:test` and `node:sqlite`.
+
 ### [`node:assert`](https://nodejs.org/api/assert.html)
 
 🟢 Fully implemented. Legacy-mode `deepEqual` uses `Bun.deepEquals` semantics rather than Node's loose `==` comparison, and function-valued or `printf`-style `message` arguments are not formatted.

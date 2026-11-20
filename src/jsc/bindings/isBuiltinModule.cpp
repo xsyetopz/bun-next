@@ -96,7 +96,7 @@ bool isBuiltinModule(const String& namePossiblyWithNodePrefix)
 
     // `bun:` + a bare Node builtin name loads that builtin (Alias::bun_prefixed_builtin).
     if (namePossiblyWithNodePrefix.startsWith("bun:"_s))
-        return !isUnprefixedNodeBuiltin(namePossiblyWithNodePrefix.substringSharingImpl(4)).isNull();
+        return namePossiblyWithNodePrefix == "bun:quic"_s || !isUnprefixedNodeBuiltin(namePossiblyWithNodePrefix.substringSharingImpl(4)).isNull();
 
     // If no match found and the name has a "node:" prefix, try without the prefix
     String name = namePossiblyWithNodePrefix;
