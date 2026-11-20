@@ -36,6 +36,7 @@
   BuildError                      Bun::Bindgen::Generated::ResolveMessage::getBuildMessageConstructor PropertyCallback
   BuildMessage                    Bun::Bindgen::Generated::ResolveMessage::getBuildMessageConstructor PropertyCallback
   Crypto                          Bun::Bindgen::Generated::Crypto::getCryptoConstructor PropertyCallback
+  Navigator                       GlobalObject::m_navigatorConstructor                 CellProperty|DontEnum
   HTMLRewriter                    Bun::Bindgen::Generated::HtmlRewriter::getHTMLRewriterConstructor PropertyCallback
   Request                         Bun::Bindgen::Generated::Response::getRequestConstructor PropertyCallback
   ResolveError                    Bun::Bindgen::Generated::ResolveMessage::getResolveMessageConstructor PropertyCallback

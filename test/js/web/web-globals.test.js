@@ -474,14 +474,14 @@ test("navigator.language is the default locale and languages a frozen list of it
 });
 
 test.concurrent.each(["userAgent", "platform", "hardwareConcurrency", "language", "languages"])(
-  "navigator.%s is a getter-only accessor",
+  "Navigator.prototype.%s is a getter-only accessor",
   async key => {
     // Spawn a fresh process so we don't mutate the test runner's own navigator object.
     const k = JSON.stringify(key);
     const src = `
     const nav = globalThis.navigator;
     const before = nav[${k}];
-    const desc = Object.getOwnPropertyDescriptor(nav, ${k});
+    const desc = Object.getOwnPropertyDescriptor(Navigator.prototype, ${k});
     let strictErr = null;
     try {
       (function () { "use strict"; nav[${k}] = "overwritten"; })();
@@ -515,6 +515,43 @@ test.concurrent.each(["userAgent", "platform", "hardwareConcurrency", "language"
     expect(result.after).not.toBe("overwritten");
   },
 );
+
+test("navigator is the one instance of the global Navigator class", () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "Navigator");
+  const constructed = [() => new Navigator(), () => Navigator()].map(make => {
+    try {
+      make();
+    } catch (error) {
+      return { name: error.name, code: error.code, message: error.message };
+    }
+  });
+  expect({
+    descriptor: { ...descriptor, value: typeof descriptor?.value },
+    isInstance: navigator instanceof Navigator,
+    ownNames: Reflect.ownKeys(navigator),
+    tag: Object.prototype.toString.call(navigator),
+    constructorOfPrototype: Navigator.prototype.constructor === Navigator,
+    constructed,
+    readOffInstance: Object.keys(Navigator.prototype).map(name => {
+      try {
+        return Reflect.get(Navigator.prototype, name, Object.create(navigator));
+      } catch (error) {
+        return error.name;
+      }
+    }),
+  }).toEqual({
+    descriptor: { value: "function", writable: true, enumerable: false, configurable: true },
+    isInstance: true,
+    ownNames: [],
+    tag: "[object Navigator]",
+    constructorOfPrototype: true,
+    constructed: [
+      { name: "TypeError", code: "ERR_ILLEGAL_CONSTRUCTOR", message: "Illegal constructor" },
+      { name: "TypeError", code: "ERR_ILLEGAL_CONSTRUCTOR", message: "Illegal constructor" },
+    ],
+    readOffInstance: ["TypeError", "TypeError", "TypeError", "TypeError", "TypeError"],
+  });
+});
 
 test("confirm (yes) unix newline", async () => {
   const proc = spawn({

@@ -46,6 +46,7 @@ export default b.declarations(
     "NativeBrotli",
     "NativeZlib",
     "NativeZstd",
+    "Navigator",
     "NetworkSink",
     "NodeJSFS",
     // Its one instance is `performance`, whose own properties have a line in own-properties.txt.

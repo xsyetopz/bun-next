@@ -541,6 +541,7 @@ const describesMachine = (getter: b.TableType) =>
     this: b.any,
     getter,
     capability: "heap",
+    throws: true,
     uses: { this: b.inspected },
     implementation: b.generic,
   }) satisfies b.GetterField;
@@ -948,15 +949,21 @@ export default b.declarations(
   // The realm makes the one instance of Crypto with the global object.
   b.namespace("crypto", {}, { listsAllMembers: true }),
   b.inherits("crypto", "Crypto.prototype"),
-  b.namespace("navigator", {
-    userAgent: describesMachine(b.string),
-    platform: describesMachine(b.string),
-    hardwareConcurrency: describesMachine(b.f64),
-    language: describesMachine(b.string),
-    languages: describesMachine(b.object),
-    "@@toStringTag": b.property(b.string),
+  // The realm makes the one instance of Navigator; the constructor throws however it is called.
+  b.class("Navigator", {
+    proto: {
+      userAgent: describesMachine(b.string),
+      platform: describesMachine(b.string),
+      hardwareConcurrency: describesMachine(b.f64),
+      language: describesMachine(b.string),
+      languages: describesMachine(b.object),
+      "@@toStringTag": b.property(b.string),
+    },
   }),
-  b.inherits("navigator", "Object.prototype"),
+  ...b.construction("Navigator", constructing(b.never, b.hostCall)),
+  ...b.callOfConstructor("Navigator", answering(b.never, b.hostCall)),
+  b.namespace("navigator", {}, { listsAllMembers: true }),
+  b.inherits("navigator", "Navigator.prototype"),
 
   // Called without `new` they throw. A File is a Blob that has a name.
   Object.entries({
