@@ -7,7 +7,13 @@ const {
   PerformanceNodeEntry,
   kEmptyObject,
 } = require("internal/shared");
-const { validateFunction, validateInteger, validateNumber, validateObject } = require("internal/validators");
+const {
+  validateBoolean,
+  validateFunction,
+  validateInteger,
+  validateNumber,
+  validateObject,
+} = require("internal/validators");
 
 const createRecordable = $bindgen("histogram.bind.ts", "createRecordable");
 const createInterval = $bindgen("histogram.bind.ts", "createInterval");
@@ -327,6 +333,7 @@ export default {
   // https://github.com/nodejs/node/blob/v26.13.1/lib/internal/perf/event_loop_delay.js#L98
   monitorEventLoopDelay: function monitorEventLoopDelay(
     options: {
+      samplePerIteration?: boolean;
       resolution?: number;
       lowest?: number | bigint;
       highest?: number | bigint;
@@ -335,13 +342,14 @@ export default {
   ) {
     validateObject(options, "options");
 
-    const { resolution = 10 } = options;
+    const { samplePerIteration = false, resolution = 10 } = options;
+    validateBoolean(samplePerIteration, "options.samplePerIteration");
     validateInteger(resolution, "options.resolution", 1);
 
-    const { lowest = 1000, highest = kInt64Max, figures = 3 } = options;
+    const { lowest = samplePerIteration ? 1 : 1000, highest = kInt64Max, figures = 3 } = options;
     validateHistogramOptions(lowest, highest, figures);
 
-    return createInterval(resolution, lowest, highest, figures);
+    return createInterval(resolution, samplePerIteration, lowest, highest, figures);
   },
   // https://github.com/nodejs/node/blob/v26.13.1/lib/internal/histogram.js#L952
   createHistogram: function createHistogram(

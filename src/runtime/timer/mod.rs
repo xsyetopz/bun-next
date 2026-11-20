@@ -172,6 +172,8 @@ impl DateHeaderTimer {
 /// Samples the event loop for every enabled `monitorEventLoopDelay()` histogram of this thread, with one timer.
 pub(crate) struct EventLoopDelayMonitor {
     enabled: UnsafeCell<Vec<EnabledInterval>>,
+    /// Those with `samplePerIteration`, which the poll of the event loop samples instead of the timer.
+    iterations: UnsafeCell<Vec<std::rc::Weak<Interval>>>,
     pub(crate) event_loop_timer: EventLoopTimer,
 }
 
@@ -185,6 +187,7 @@ impl Default for EventLoopDelayMonitor {
     fn default() -> Self {
         Self {
             enabled: UnsafeCell::default(),
+            iterations: UnsafeCell::default(),
             event_loop_timer: EventLoopTimer::init_paused(EventLoopTimerTag::EventLoopDelayMonitor),
         }
     }
@@ -193,25 +196,70 @@ impl Default for EventLoopDelayMonitor {
 impl EventLoopDelayMonitor {
     pub(crate) fn enable(&self, interval: &Rc<Interval>) {
         let now = Timespec::now(TimespecMockMode::ForceRealTime);
-        // SAFETY: JS thread; the borrow ends at this statement, which runs no JS.
+        let Some(resolution_ms) = interval.resolution_ms else {
+            interval.start_iterations(now.ns());
+            // SAFETY: JS thread; the borrow ends at this statement, which runs no JS.
+            unsafe { &mut *self.iterations.get() }.push(Rc::downgrade(interval));
+            return;
+        };
+        // SAFETY: as above.
         unsafe { &mut *self.enabled.get() }.push(EnabledInterval {
             interval: Rc::downgrade(interval),
-            next: now.add_ms(i64::from(interval.resolution_ms)),
+            next: now.add_ms(i64::from(resolution_ms.get())),
         });
         self.schedule();
     }
 
     pub(crate) fn disable(&self, interval: &Rc<Interval>) {
+        let other =
+            |weak: &std::rc::Weak<Interval>| !core::ptr::eq(weak.as_ptr(), Rc::as_ptr(interval));
         // SAFETY: as `enable`.
-        unsafe { &mut *self.enabled.get() }
-            .retain(|enabled| !core::ptr::eq(enabled.interval.as_ptr(), Rc::as_ptr(interval)));
+        unsafe { &mut *self.iterations.get() }.retain(other);
+        // SAFETY: as `enable`.
+        unsafe { &mut *self.enabled.get() }.retain(|enabled| other(&enabled.interval));
         self.schedule();
     }
 
     pub(crate) fn disable_all(&self) {
         // SAFETY: as `enable`.
+        unsafe { &mut *self.iterations.get() }.clear();
+        // SAFETY: as `enable`.
         unsafe { &mut *self.enabled.get() }.clear();
         self.schedule();
+    }
+
+    /// Runs one poll of the event loop, which can block for `timeout` or, with `None`, until there is I/O.
+    pub(crate) fn poll(
+        &self,
+        timeout: Option<&Timespec>,
+        vm: &VirtualMachine,
+        tick: impl FnOnce(),
+    ) {
+        // SAFETY: JS thread; the borrow ends at this statement, which runs no JS.
+        if unsafe { &*self.iterations.get() }.is_empty() {
+            return tick();
+        }
+        let now_ns = Timespec::now(TimespecMockMode::ForceRealTime).ns();
+        let timeout_ns = timeout.map(Timespec::ns);
+        // SAFETY: as above; the borrow ends with the loop, which runs no JS.
+        for interval in unsafe { &*self.iterations.get() } {
+            if let Some(interval) = interval.upgrade() {
+                interval.before_poll(now_ns, timeout_ns);
+            }
+        }
+        // This can run JS, which can enable or disable one, so no borrow spans it.
+        tick();
+        let now_ns = Timespec::now(TimespecMockMode::ForceRealTime).ns();
+        let mut allocated = 0;
+        // SAFETY: as above.
+        unsafe { &mut *self.iterations.get() }.retain(|interval| {
+            let Some(interval) = interval.upgrade() else {
+                return false;
+            };
+            allocated += interval.after_poll(now_ns);
+            true
+        });
+        report_growth(vm, allocated);
     }
 
     pub(crate) fn on_fire(&self, now: &Timespec, vm: &VirtualMachine) {
@@ -225,18 +273,17 @@ impl EventLoopDelayMonitor {
                 // From the time of the sample, which is later than `now` if a timer before this one was slow: the
                 // next sample is then no sooner than the resolution. `All::drain_timers` pops every node due at
                 // or before `now`.
+                let Some(resolution_ms) = interval.resolution_ms else {
+                    return false;
+                };
                 let (sampled_at, grown) = interval.sample();
-                enabled.next = sampled_at.add_ms(i64::from(interval.resolution_ms));
+                enabled.next = sampled_at.add_ms(i64::from(resolution_ms.get()));
                 allocated += grown;
             }
             true
         });
         self.schedule();
-        if allocated > 0 {
-            // This can collect, so it comes last.
-            vm.jsc_vm()
-                .report_extra_memory_allocated(bun_jsc::JSValue::UNDEFINED, allocated);
-        }
+        report_growth(vm, allocated);
     }
 
     /// Arms the timer for the interval that is due first.
@@ -249,6 +296,14 @@ impl EventLoopDelayMonitor {
         } else {
             self.event_loop_timer.disarm();
         }
+    }
+}
+
+/// This can collect, so it comes after every borrow of the monitor.
+fn report_growth(vm: &VirtualMachine, allocated: usize) {
+    if allocated > 0 {
+        vm.jsc_vm()
+            .report_extra_memory_allocated(bun_jsc::JSValue::UNDEFINED, allocated);
     }
 }
 

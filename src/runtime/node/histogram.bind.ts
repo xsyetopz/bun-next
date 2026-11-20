@@ -199,7 +199,7 @@ export const createRecordable = b.fn({
 });
 /** Throws if no histogram has this range and precision. */
 export const createInterval = b.fn({
-  args: { resolution: b.f64, ...range },
+  args: { resolution: b.f64, samplePerIteration: b.bool, ...range },
   returns: ELDHistogram,
   capability: "heap",
   throws: true,

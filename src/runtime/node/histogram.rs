@@ -1,6 +1,7 @@
 //! The histogram classes of `node:perf_hooks`, which `createHistogram()` and `monitorEventLoopDelay()` return.
 
 use core::cell::{Cell, RefCell};
+use core::num::NonZeroU32;
 use core::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::BTreeMap;
 use std::rc::Rc;
@@ -58,8 +59,20 @@ struct State {
 pub(crate) struct Interval {
     state: Arc<Guarded<State>>,
     size: Arc<Size>,
-    /// Never 0.
-    pub(crate) resolution_ms: u32,
+    /// `None` with `samplePerIteration`, which samples each iteration of the event loop instead.
+    pub(crate) resolution_ms: Option<NonZeroU32>,
+    iteration: Cell<Iteration>,
+}
+
+/// The `uv_prepare_t` and `uv_check_t` times of Node.js's `IterationHistogram`.
+#[derive(Clone, Copy, Default)]
+struct Iteration {
+    /// The end of the last poll.
+    check_ns: u64,
+    /// The start of this poll.
+    prepare_ns: u64,
+    /// How long this poll could block, or `None` for no limit.
+    timeout_ns: Option<u64>,
 }
 
 impl State {
@@ -95,6 +108,42 @@ impl Interval {
         let mut state = self.state.lock();
         state.record_delta(now.ns());
         (now, self.size.update(&state))
+    }
+
+    pub(crate) fn start_iterations(&self, now_ns: u64) {
+        self.iteration.set(Iteration {
+            check_ns: now_ns,
+            prepare_ns: now_ns,
+            timeout_ns: Some(0),
+        });
+    }
+
+    pub(crate) fn before_poll(&self, now_ns: u64, timeout_ns: Option<u64>) {
+        let check_ns = self.iteration.get().check_ns;
+        self.iteration.set(Iteration {
+            check_ns,
+            prepare_ns: now_ns,
+            timeout_ns,
+        });
+    }
+
+    /// Records the time the event loop spent outside the poll, and the time the poll overran its timeout by.
+    /// Returns the bytes that the counts have grown by.
+    // https://github.com/nodejs/node/blob/v26.13.1/src/histogram.cc#L2752
+    pub(crate) fn after_poll(&self, now_ns: u64) -> usize {
+        let iteration = self.iteration.get();
+        let polled = now_ns.saturating_sub(iteration.prepare_ns);
+        let mut latency = iteration.prepare_ns.saturating_sub(iteration.check_ns);
+        if let Some(timeout_ns) = iteration.timeout_ns {
+            latency += polled.saturating_sub(timeout_ns);
+        }
+        self.iteration.set(Iteration {
+            check_ns: now_ns,
+            ..iteration
+        });
+        let mut state = self.state.lock();
+        state.record(latency.max(1));
+        self.size.update(&state)
     }
 }
 
@@ -199,6 +248,7 @@ pub(crate) fn create_recordable<'a>(
 pub(crate) fn create_interval<'a>(
     heap: &JsHeap<'a>,
     resolution: f64,
+    sample_per_iteration: bool,
     lowest: u64,
     highest: u64,
     figures: u32,
@@ -210,7 +260,9 @@ pub(crate) fn create_interval<'a>(
         state: Arc::clone(&state),
         size: Arc::clone(&size),
         // `as` saturates.
-        resolution_ms: (resolution as u32).max(1),
+        resolution_ms: (!sample_per_iteration)
+            .then(|| NonZeroU32::new(resolution as u32).unwrap_or(NonZeroU32::MIN)),
+        iteration: Cell::default(),
     });
     let histogram = Histogram {
         counts: RefCell::new(Counts::Shared(state)),

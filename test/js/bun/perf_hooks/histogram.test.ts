@@ -1821,6 +1821,24 @@ describe("Histogram", () => {
       );
     });
 
+    test("monitorEventLoopDelay with samplePerIteration records the time between polls", async () => {
+      assert.strictEqual(
+        thrown(() => monitorEventLoopDelay({ samplePerIteration: 1 as any })),
+        'TypeError ERR_INVALID_ARG_TYPE: The "options.samplePerIteration" property must be of type boolean. Received type number (1)',
+      );
+      const h = monitorEventLoopDelay({ samplePerIteration: true, resolution: 60_000 });
+      h.enable();
+      for (let i = 0; i < 3; i++) {
+        await new Promise(resolve => setImmediate(resolve));
+        Bun.sleepSync(20);
+      }
+      await new Promise(resolve => setImmediate(resolve));
+      h.disable();
+      assert(h.count >= 3, `count ${h.count}`);
+      assert(h.max >= 20e6, `max ${h.max}`);
+      assert(h.min >= 1);
+    });
+
     test("a receiver of another class", () => {
       const recordable = createHistogram();
       const interval = monitorEventLoopDelay();

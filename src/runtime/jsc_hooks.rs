@@ -806,6 +806,7 @@ fn auto_tick(vm: &VirtualMachine) {
             || el.has_pending_tasks();
         // Fold the QUIC deadline into the poll timeout.
         let quic_next_tick_us = loop_.internal_loop_data.quic_next_tick_us();
+        let eld = &state.timer.event_loop_delay;
         let mut timespec = bun_core::Timespec { sec: 0, nsec: 0 };
         if loop_.is_active() {
             // Before `get_timeout`: the first call arms the idle GC timer, and a
@@ -823,9 +824,12 @@ fn auto_tick(vm: &VirtualMachine) {
                 &mut now,
             );
             let now_ns = now.map_or(bun_uws::NOW_NS_UNKNOWN, |t| t.ns());
-            loop_.tick_with_timeout(if have_timeout { Some(&timespec) } else { None }, now_ns);
+            let timeout = have_timeout.then_some(&timespec);
+            eld.poll(timeout, vm, || loop_.tick_with_timeout(timeout, now_ns));
         } else {
-            loop_.tick_without_idle();
+            eld.poll(Some(&bun_core::Timespec { sec: 0, nsec: 0 }), vm, || {
+                loop_.tick_without_idle()
+            });
         }
     }
 
@@ -896,6 +900,7 @@ fn auto_tick_active(vm: &VirtualMachine) {
             || el.immediate_task_count() > 0
             || el.has_pending_tasks();
         let quic_next_tick_us = loop_.internal_loop_data.quic_next_tick_us();
+        let eld = &state.timer.event_loop_delay;
         let mut timespec = bun_core::Timespec { sec: 0, nsec: 0 };
         if loop_.is_active() {
             // Before `get_timeout` — see the matching call in `auto_tick`.
@@ -912,9 +917,12 @@ fn auto_tick_active(vm: &VirtualMachine) {
                 &mut now,
             );
             let now_ns = now.map_or(bun_uws::NOW_NS_UNKNOWN, |t| t.ns());
-            loop_.tick_with_timeout(if have_timeout { Some(&timespec) } else { None }, now_ns);
+            let timeout = have_timeout.then_some(&timespec);
+            eld.poll(timeout, vm, || loop_.tick_with_timeout(timeout, now_ns));
         } else {
-            loop_.tick_without_idle();
+            eld.poll(Some(&bun_core::Timespec { sec: 0, nsec: 0 }), vm, || {
+                loop_.tick_without_idle()
+            });
         }
     }
 
