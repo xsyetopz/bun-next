@@ -264,6 +264,7 @@ const moduleNamespaces = [
 
 const nativeFiles = [
   "CallSite.cpp",
+  "CryptoMac.cpp",
   "InternalForTesting.cpp",
   "InternalModuleRegistry.cpp",
   "IsolatedModuleCache.cpp",

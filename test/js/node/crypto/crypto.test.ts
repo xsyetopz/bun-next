@@ -523,7 +523,7 @@ describe("crypto.createMac", () => {
   const data = Buffer.from("The quick brown fox jumps over the lazy dog");
 
   it("lists the supported MACs", () => {
-    expect(crypto.getMacs()).toEqual(["gmac", "hmac"]);
+    expect(crypto.getMacs()).toEqual(["cmac", "gmac", "hmac", "poly1305"]);
     expect((crypto as any).Mac).toBeUndefined();
   });
 
@@ -538,6 +538,20 @@ describe("crypto.createMac", () => {
   it("computes GMAC from a GCM cipher", () => {
     const mac = crypto.createMac("gmac", Buffer.alloc(16), { cipher: "aes-128-gcm", iv: Buffer.alloc(12) });
     expect(mac.final("hex")).toBe("58e2fccefa7e3061367f1d57a4e7455a");
+  });
+
+  it("computes CMAC and Poly1305 (RFC 4493, RFC 8439)", () => {
+    const cmacKey = Buffer.from("2b7e151628aed2a6abf7158809cf4f3c", "hex");
+    const cmac = crypto.createMac("CMAC", cmacKey, { cipher: "AES-128-CBC" });
+    expect(cmac.update("6bc1bee22e409f96", "hex").update("e93d7e117393172a", "hex").final("hex")).toBe(
+      "070a16b46b4d4144f79bdd9dd04a287c",
+    );
+    const polyKey = Buffer.from("85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b", "hex");
+    const poly = crypto.createMac("poly1305", polyKey).update("Cryptographic Forum Research Group");
+    expect(poly.final("hex")).toBe("a8061dc1305136c6c22b8baf0c0127a9");
+    expect(() => crypto.createMac("poly1305", Buffer.alloc(16))).toThrow(
+      expect.objectContaining({ code: "ERR_CRYPTO_OPERATION_FAILED", message: "Failed to initialize MAC" }),
+    );
   });
 
   it("emits one tag when used as a stream", async () => {

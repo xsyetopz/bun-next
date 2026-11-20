@@ -8,6 +8,9 @@ const normalizeEncoding: (encoding: string) => string | undefined = $bindgen(
   "normalizeEncoding",
 );
 
+const computeMac: (algorithm: string, cipher: string | undefined, key: Buffer, data: Buffer) => Buffer =
+  $newCppFunction("CryptoMac.cpp", "jsFunctionCryptoComputeMac", 4);
+
 const kHandle = Symbol("kHandle");
 const kFinalized = Symbol("kFinalized");
 
@@ -29,8 +32,32 @@ function unsupportedDigest() {
   return error;
 }
 
+function keyBytes(key: any): Buffer {
+  return Buffer.isBuffer(key) ? key : key.export();
+}
+
+// BoringSSL computes these in one call, so the message is buffered until final().
+function oneShot(algorithm: string, cipher: string | undefined, key: unknown): MacHandle {
+  const bytes = keyBytes(key);
+  computeMac(algorithm, cipher, bytes, Buffer.alloc(0));
+  const chunks: Buffer[] = [];
+  return {
+    update: data => void chunks.push(Buffer.from(data)),
+    final: () => computeMac(algorithm, cipher, bytes, Buffer.concat(chunks)),
+  };
+}
+
 const macs: Record<string, { options: string[]; create(key: unknown, options: MacOptions): MacHandle }> = {
   __proto__: null as any,
+  cmac: {
+    options: ["cipher"],
+    create(key, { cipher }) {
+      if (cipher === undefined) throw invalidOption("cipher", cipher, "is required by cmac");
+      cipher = cipher.toLowerCase();
+      if (!cipher.endsWith("-cbc")) throw invalidOption("cipher", cipher, "must use CBC mode");
+      return oneShot("cmac", cipher, key);
+    },
+  },
   gmac: {
     options: ["cipher", "iv"],
     create(key, { cipher, iv }) {
@@ -60,6 +87,10 @@ const macs: Record<string, { options: string[]; create(key: unknown, options: Ma
       }
       return { update: data => hmac.update(data), final: () => hmac.digest() };
     },
+  },
+  poly1305: {
+    options: [],
+    create: key => oneShot("poly1305", undefined, key),
   },
 };
 
