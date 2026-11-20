@@ -1569,15 +1569,13 @@ impl<'a, const TYPESCRIPT: bool, const SCAN_ONLY: bool> P<'a, TYPESCRIPT, SCAN_O
             return self.new_expr(E::Null {}, arg.loc);
         }
 
-        let import_record_index = self.add_import_record(
-            ImportKind::RequireResolve,
-            arg.loc,
-            arg.data
-                .e_string()
-                .expect("infallible: variant checked")
-                .string(self.arena)
-                .expect("unreachable"),
-        );
+        let path = arg
+            .data
+            .e_string()
+            .expect("infallible: variant checked")
+            .slice(self.arena);
+        let import_record_index =
+            self.add_import_record(ImportKind::RequireResolve, arg.loc, path);
         self.import_records.items_mut()[import_record_index as usize]
             .flags
             .set(

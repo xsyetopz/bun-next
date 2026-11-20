@@ -3698,6 +3698,17 @@ console.log(resolve.length)
           `export const foo = require.resolve("my-module")`,
         );
       });
+
+      it("require.resolve keeps a folded string concatenation whole", () => {
+        expectPrinted_(
+          `export const foo = require.resolve('node:' + 'fs')`,
+          `export const foo = require.resolve("node:fs")`,
+        );
+        expectPrinted_(
+          `export const foo = require.resolve(x ? 'my-' + 'module' : 'other')`,
+          `export const foo = x ? require.resolve("my-module") : require.resolve("other")`,
+        );
+      });
     });
 
     it("define", () => {
