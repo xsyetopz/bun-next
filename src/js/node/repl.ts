@@ -323,18 +323,12 @@ function loadImpl(): Loaded {
     // No active REPL context - let other handlers try
   }
 
-  // One-shot install per process. Node's `addUncaughtExceptionCaptureCallback`
-  // keeps a separate aux list that never counts against
-  // `hasUncaughtExceptionCaptureCallback()`; Bun lacks that native API, so the
-  // shim occupies the exclusive slot for the process lifetime once the first
-  // REPL starts (uninstalling on 'exit' would drop async errors that fire after
-  // input close — see test-repl-uncaught-exception-after-input-ended). The
-  // shim's fallthrough re-emits `uncaughtException` with the origin arg so user
-  // listeners still see it.
+  // Once per process: uninstalling on 'exit' would drop async errors that fire after input close
+  // (test-repl-uncaught-exception-after-input-ended).
   function setupExceptionCapture() {
     if (exceptionCaptureInstalled) return;
     exceptionCaptureInstalled = true;
-    require("internal/repl/node-shims").addUncaughtExceptionCaptureCallback(replExceptionCaptureCallback);
+    process.addUncaughtExceptionCaptureCallback(replExceptionCaptureCallback);
   }
 
   const kBufferedCommandSymbol = Symbol("bufferedCommand");

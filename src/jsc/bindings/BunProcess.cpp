@@ -976,6 +976,28 @@ JSC_DEFINE_HOST_FUNCTION(Process_setUncaughtExceptionCaptureCallback, (JSC::JSGl
     return JSC::JSValue::encode(jsUndefined());
 }
 
+// https://github.com/nodejs/node/blob/v26.13.1/lib/internal/process/execution.js#L142
+JSC_DEFINE_HOST_FUNCTION(Process_addUncaughtExceptionCaptureCallback, (JSC::JSGlobalObject * lexicalGlobalObject, JSC::CallFrame* callFrame))
+{
+    auto* globalObject = static_cast<Zig::GlobalObject*>(lexicalGlobalObject);
+    auto& vm = JSC::getVM(globalObject);
+    auto throwScope = DECLARE_THROW_SCOPE(vm);
+    JSValue fn = callFrame->argument(0);
+    if (!fn.isCallable()) {
+        return Bun::ERR::INVALID_ARG_TYPE(throwScope, globalObject, "fn"_s, "function"_s, fn);
+    }
+    auto* process = globalObject->processObject();
+    JSC::JSArray* callbacks = process->uncaughtExceptionAuxiliaryCallbacks();
+    if (!callbacks) {
+        callbacks = JSC::constructEmptyArray(globalObject, nullptr);
+        RETURN_IF_EXCEPTION(throwScope, {});
+        process->setUncaughtExceptionAuxiliaryCallbacks(callbacks);
+    }
+    callbacks->push(globalObject, fn);
+    RETURN_IF_EXCEPTION(throwScope, {});
+    return JSValue::encode(jsUndefined());
+}
+
 JSC_DEFINE_HOST_FUNCTION(Process_hasUncaughtExceptionCaptureCallback, (JSC::JSGlobalObject * globalObject, JSC::CallFrame* callFrame))
 {
     auto* zigGlobal = defaultGlobalObject(globalObject);
@@ -1378,6 +1400,33 @@ void signalHandler(uv_signal_t* signal, int signalNumber)
 
 extern "C" void Bun__logUnhandledException(JSC::EncodedJSValue exception);
 
+// Newest first; the exception is handled once one returns true. A callback that throws ends the process, as the capture
+// callback's does, and that also counts as handled.
+static bool callUncaughtExceptionAuxiliaryCallbacks(Zig::GlobalObject* globalObject, JSC::JSArray* callbacks, JSValue exception)
+{
+    auto& vm = JSC::getVM(globalObject);
+    MarkedArgumentBuffer args;
+    args.append(exception);
+    for (unsigned i = callbacks->length(); i-- > 0;) {
+        auto scope = DECLARE_TOP_EXCEPTION_SCOPE(vm);
+        JSValue callback = callbacks->getIndex(globalObject, i);
+        JSValue result;
+        if (!scope.exception())
+            result = call(globalObject, callback, args, "uncaughtExceptionCaptureCallback"_s);
+        if (auto ex = scope.exception()) {
+            (void)scope.tryClearException();
+            if (!vm.hasPendingTerminationException()) {
+                Bun__logUnhandledException(JSValue::encode(JSValue(ex)));
+                Bun__Process__exit(globalObject, 1);
+            }
+            return true;
+        }
+        if (result.isTrue())
+            return true;
+    }
+    return false;
+}
+
 extern "C" int Bun__handleUncaughtException(JSC::JSGlobalObject* lexicalGlobalObject, JSC::JSValue exception, int isRejection)
 {
     // The exception can come from a node:vm context, which doesn't have its own process object.
@@ -1438,6 +1487,8 @@ extern "C" int Bun__handleUncaughtException(JSC::JSGlobalObject* lexicalGlobalOb
             Bun__logUnhandledException(JSValue::encode(JSValue(ex)));
             Bun__Process__exit(globalObject, 1);
         }
+    } else if (JSC::JSArray* auxiliary = process->uncaughtExceptionAuxiliaryCallbacks(); auxiliary && callUncaughtExceptionAuxiliaryCallbacks(globalObject, auxiliary, exception)) {
+        return true;
     } else if (wrapped.listenerCount(uncaughtExceptionIdent) > 0) {
         auto emitScope = DECLARE_TOP_EXCEPTION_SCOPE(vm);
         wrapped.emit(uncaughtExceptionIdent, args);
@@ -4872,6 +4923,7 @@ void Process::visitChildrenImpl(JSCell* cell, Visitor& visitor)
     ASSERT_GC_OBJECT_INHERITS(thisObject, info());
     Base::visitChildren(thisObject, visitor);
     visitor.append(thisObject->m_uncaughtExceptionCaptureCallback);
+    visitor.append(thisObject->m_uncaughtExceptionAuxiliaryCallbacks);
     visitor.append(thisObject->m_nextTickFunction);
     visitor.append(thisObject->m_cachedCwd);
     visitor.append(thisObject->m_onWarning);
@@ -6207,6 +6259,7 @@ extern "C" void Process__emitErrorEvent(Zig::GlobalObject* global, EncodedJSValu
   _rawDebug                        constructRawDebug                                   PropertyCallback
   _tickCallback                    Process_stubEmptyFunction                           Function 0
   abort                            Process_functionAbort                               Function 1
+  addUncaughtExceptionCaptureCallback Process_addUncaughtExceptionCaptureCallback      Function 1
   allowedNodeEnvironmentFlags      constructAllowedNodeEnvironmentFlags                PropertyCallback
   loadEnvFile                      constructLoadEnvFile                                PropertyCallback
   finalization                     constructFinalization                               PropertyCallback

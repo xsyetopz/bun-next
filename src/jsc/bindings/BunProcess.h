@@ -29,6 +29,8 @@ class Process : public WebCore::JSEventEmitter {
     // Only used by internal code via passing to queueNextTick
     LazyProperty<Process, JSFunction> m_emitHelperFunction;
     WriteBarrier<Unknown> m_uncaughtExceptionCaptureCallback;
+    // process.addUncaughtExceptionCaptureCallback()'s, oldest first. They never occupy the slot above.
+    WriteBarrier<JSC::JSArray> m_uncaughtExceptionAuxiliaryCallbacks;
     WriteBarrier<JSObject> m_nextTickFunction;
     // https://github.com/nodejs/node/blob/2eff28fb7a93d3f672f80b582f664a7c701569fb/lib/internal/bootstrap/switches/does_own_process_state.js#L113-L116
     WriteBarrier<JSString> m_cachedCwd;
@@ -128,6 +130,16 @@ public:
     inline JSC::JSValue getUncaughtExceptionCaptureCallback()
     {
         return m_uncaughtExceptionCaptureCallback.get();
+    }
+
+    inline void setUncaughtExceptionAuxiliaryCallbacks(JSC::JSArray* callbacks)
+    {
+        m_uncaughtExceptionAuxiliaryCallbacks.set(vm(), this, callbacks);
+    }
+
+    inline JSC::JSArray* uncaughtExceptionAuxiliaryCallbacks()
+    {
+        return m_uncaughtExceptionAuxiliaryCallbacks.get();
     }
 
     inline void setRunsWhenProcessExits(JSC::JSObject* function)

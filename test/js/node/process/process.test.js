@@ -2410,6 +2410,67 @@ it("process.hasUncaughtExceptionCaptureCallback", () => {
   process.setUncaughtExceptionCaptureCallback(null);
 });
 
+describe.concurrent("process.addUncaughtExceptionCaptureCallback", () => {
+  async function run(source) {
+    await using proc = Bun.spawn({
+      cmd: [bunExe(), "-e", source],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    return { stdout, stderr, exitCode };
+  }
+
+  it("calls the newest callback first and stops at the first that returns true", async () => {
+    const { stdout, exitCode } = await run(`
+      process.addUncaughtExceptionCaptureCallback(e => { console.log("first", e.message); return true; });
+      process.addUncaughtExceptionCaptureCallback(e => { console.log("second", e.message); return true; });
+      console.log("has", process.hasUncaughtExceptionCaptureCallback());
+      setImmediate(() => console.log("continued"));
+      throw new Error("boom");
+    `);
+    expect(stdout).toBe("has false\nsecond boom\ncontinued\n");
+    expect(exitCode).toBe(0);
+  });
+
+  it("falls through to 'uncaughtException' when no callback returns true", async () => {
+    const { stdout, exitCode } = await run(`
+      process.addUncaughtExceptionCaptureCallback(e => { console.log("aux", e.message); return 1; });
+      process.on("uncaughtException", e => console.log("listener", e.message));
+      throw new Error("boom");
+    `);
+    expect(stdout).toBe("aux boom\nlistener boom\n");
+    expect(exitCode).toBe(0);
+  });
+
+  it("exits with code 1 when nothing handles the exception", async () => {
+    const { stdout, stderr, exitCode } = await run(`
+      process.addUncaughtExceptionCaptureCallback(e => { console.log("aux", e.message); });
+      throw new Error("boom");
+    `);
+    expect(stdout).toBe("aux boom\n");
+    expect(stderr).toContain("boom");
+    expect(exitCode).toBe(1);
+  });
+
+  it("is skipped while setUncaughtExceptionCaptureCallback holds a callback", async () => {
+    const { stdout, exitCode } = await run(`
+      process.addUncaughtExceptionCaptureCallback(() => { console.log("aux"); return true; });
+      process.setUncaughtExceptionCaptureCallback(e => console.log("primary", e.message));
+      throw new Error("boom");
+    `);
+    expect(stdout).toBe("primary boom\n");
+    expect(exitCode).toBe(0);
+  });
+
+  it("rejects a non-function", () => {
+    expect(() => process.addUncaughtExceptionCaptureCallback(1)).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }),
+    );
+  });
+});
+
 // Attaching a handler to a rejected promise used to search the rejections that
 // were not reported yet one by one (and shift the ones behind the hit), so
 // handling N of them cost O(N^2). Not concurrent: these measure time.
