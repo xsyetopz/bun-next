@@ -783,7 +783,7 @@ JSC_DEFINE_CUSTOM_SETTER(setNodeModuleWrapper,
 static JSValue getModulePrototypeObject(VM& vm, JSObject* moduleObject)
 {
     auto* globalObject = defaultGlobalObject(moduleObject->globalObject());
-    auto prototype = constructEmptyObject(globalObject, globalObject->objectPrototype(), 2);
+    auto prototype = constructEmptyObject(globalObject, globalObject->objectPrototype(), 3);
 
     prototype->putDirectCustomAccessor(
         vm, WebCore::clientData(vm)->builtinNames().requirePublicName(),
@@ -792,6 +792,7 @@ static JSValue getModulePrototypeObject(VM& vm, JSObject* moduleObject)
         0);
 
     Bun::putDirectNamed(vm, prototype, "_compile"_s, globalObject->modulePrototypeUnderscoreCompileFunction());
+    prototype->putDirectBuiltinFunction(vm, globalObject, Identifier::fromString(vm, "load"_s), nodeModuleObjectLoadCodeGenerator(vm), 0);
 
     return prototype;
 }

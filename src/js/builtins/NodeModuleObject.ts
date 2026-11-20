@@ -141,3 +141,26 @@ export function findPackageJSON(specifier, base) {
   }
   return undefined;
 }
+
+// Implementation for `Module.prototype.load`, following lib/internal/modules/cjs/loader.js in Node.js.
+export function load(this: JSCommonJSModule, filename: string) {
+  if (this.loaded) throw $ERR_INTERNAL_ASSERTION(require("internal/shared").kInternalAssertionSuffix.slice(1));
+  const path = require("node:path");
+  const Module = require("node:module");
+  this.filename = filename;
+  this.paths = Module._nodeModulePaths(path.dirname(filename));
+
+  // The longest registered extension wins, so `a.test.js` takes a `.test.js` loader over `.js`.
+  const name = path.basename(filename);
+  const extensions = Module._extensions;
+  let extension = ".js";
+  for (let index = name.indexOf(".", 1); index !== -1; index = name.indexOf(".", index + 1)) {
+    const candidate = name.slice(index);
+    if (extensions[candidate]) {
+      extension = candidate;
+      break;
+    }
+  }
+  extensions[extension](this, filename);
+  this.loaded = true;
+}

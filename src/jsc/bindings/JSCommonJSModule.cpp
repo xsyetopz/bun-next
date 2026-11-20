@@ -1101,6 +1101,7 @@ JSC::Structure* JSCommonJSModule::createStructure(
     auto& vm = JSC::getVM(globalObject);
 
     auto* prototype = JSCommonJSModulePrototype::create(vm, JSCommonJSModulePrototype::createStructure(vm, globalObject, globalObject->objectPrototype()));
+    prototype->putDirectBuiltinFunction(vm, globalObject, Identifier::fromString(vm, "load"_s), nodeModuleObjectLoadCodeGenerator(vm), 0);
 
     // Do not set the number of inline properties on this structure
     // there may be an off-by-one error in the Structure which causes `require.id` to become the require

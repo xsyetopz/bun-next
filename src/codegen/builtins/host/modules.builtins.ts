@@ -28,6 +28,18 @@ const compilesText = {
   implementation: b.generic,
 } satisfies b.FunctionField;
 
+// Module.prototype.load in NodeModuleObject.ts calls whatever loader the program has stored in Module._extensions.
+const loadsFile = {
+  args: { filename: b.string.loose },
+  returns: b.undefined,
+  capability: "js",
+  throws: true,
+  runsUnseenCode: true,
+  this: b.any,
+  uses: { this: [b.everything], filename: [b.retained, b.loadedAsModule] },
+  implementation: b.generic,
+} satisfies b.FunctionField;
+
 const resolvesFromModule = {
   args: { specifier: b.string, options: b.any.optional },
   returns: b.any,
@@ -332,6 +344,7 @@ export default b.declarations(
     "%ModuleObject%",
     {
       _compile: compilesText,
+      load: loadsFile,
       // The record of the module has these four.
       id: b.property(b.string, constantUnlessWritten),
       filename: b.property(b.string, constantUnlessWritten),
@@ -450,6 +463,7 @@ export default b.declarations(
       implementation: b.generic,
     },
     _compile: compilesText,
+    load: loadsFile,
   }),
   b.inherits("node:module.prototype", "Object.prototype"),
   objectsMadeByNativeModuleMacro.flatMap(path => b.inherits(path, "Object.prototype")),

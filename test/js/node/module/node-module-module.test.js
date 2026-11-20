@@ -1341,6 +1341,33 @@ console.log("survived", require("./late.js"));`,
     expect(dn).toBe(path.dirname(filename));
   });
 
+  test("Module.prototype.load runs the longest registered extension loader and marks the module loaded", () => {
+    using dir = tempDir("module-load", {
+      "a.js": "module.exports = { filename: __filename };",
+      "b.custom.js": "",
+    });
+    const file = path.join(String(dir), "a.js");
+    const loaded = new Module(file, null);
+    loaded.load(file);
+    expect(loaded.exports).toEqual({ filename: file });
+    expect(loaded.loaded).toBe(true);
+    expect(loaded.filename).toBe(file);
+    expect(loaded.paths).toEqual(Module._nodeModulePaths(String(dir)));
+    expect(Module.prototype.load).toBeFunction();
+    expect(() => loaded.load(file)).toThrow(expect.objectContaining({ code: "ERR_INTERNAL_ASSERTION" }));
+
+    const custom = path.join(String(dir), "b.custom.js");
+    const calls = [];
+    Module._extensions[".custom.js"] = (m, filename) => calls.push([m, filename]);
+    try {
+      const m = new Module(custom, null);
+      m.load(custom);
+      expect(calls).toEqual([[m, custom]]);
+    } finally {
+      delete Module._extensions[".custom.js"];
+    }
+  });
+
   test("Module._extensions", () => {
     expect(".js" in Module._extensions).toBeTrue();
     expect(".json" in Module._extensions).toBeTrue();

@@ -384,6 +384,8 @@ const calledFunctionsByPath: Readonly<Record<b.BuiltinPath, readonly b.CalledFun
   "node:module.findPackageJSON": [
     heldAs(b.functionIn("builtins/NodeModuleObject", "findPackageJSON"), "node:module.findPackageJSON"),
   ],
+  "node:module.prototype.load": [heldAs(b.functionIn("builtins/NodeModuleObject", "load"), "node:module.prototype.load")],
+  "%ModuleObject%.load": [heldAs(b.functionIn("builtins/NodeModuleObject", "load"), "%ModuleObject%.load")],
   "node:module._cache": requireCacheFunctions,
   "node:module._extensions": functionsOfDefaultLoaders,
   "process._rawDebug": [heldAs(processInternal("rawDebug"), "process._rawDebug")],
