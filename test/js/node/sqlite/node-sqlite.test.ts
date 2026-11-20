@@ -2906,8 +2906,10 @@ describe("module exports", () => {
     expect(() => new Session()).toThrow(expect.objectContaining({ code: "ERR_ILLEGAL_CONSTRUCTOR" }));
     // SQLTagStore is Bun-internal (createTagStore()) — not a Node export.
     expect(Object.keys(require("node:sqlite")).sort()).toEqual([
+      "Database",
       "DatabaseSync",
       "Session",
+      "Statement",
       "StatementSync",
       "backup",
       "constants",
@@ -2916,6 +2918,19 @@ describe("module exports", () => {
     db.exec("CREATE TABLE t (id INTEGER PRIMARY KEY)");
     if (sqliteHasSession) expect(db.createSession()).toBeInstanceOf(Session);
     expect(db.createTagStore().constructor.name).toBe("SQLTagStore");
+    db.close();
+  });
+
+  test("Database and Statement are the classes; DatabaseSync and StatementSync alias them", () => {
+    const sqlite = require("node:sqlite");
+    expect({
+      databaseAlias: sqlite.DatabaseSync === sqlite.Database,
+      statementAlias: sqlite.StatementSync === sqlite.Statement,
+      databaseName: sqlite.Database.name,
+      statementName: sqlite.Statement.name,
+    }).toEqual({ databaseAlias: true, statementAlias: true, databaseName: "Database", statementName: "Statement" });
+    const db = new sqlite.Database(":memory:");
+    expect(db.prepare("SELECT 1")).toBeInstanceOf(sqlite.Statement);
     db.close();
   });
 

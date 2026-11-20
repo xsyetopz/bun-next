@@ -498,9 +498,9 @@ static JSValue rowToArray(JSGlobalObject* globalObject, ThrowScope& scope, sqlit
 // JSDatabaseSync
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ClassInfo JSDatabaseSync::s_info = { "DatabaseSync"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDatabaseSync) };
-const ClassInfo JSDatabaseSyncPrototype::s_info = { "DatabaseSync"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDatabaseSyncPrototype) };
-const ClassInfo JSDatabaseSyncConstructor::s_info = { "DatabaseSync"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDatabaseSyncConstructor) };
+const ClassInfo JSDatabaseSync::s_info = { "Database"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDatabaseSync) };
+const ClassInfo JSDatabaseSyncPrototype::s_info = { "Database"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDatabaseSyncPrototype) };
+const ClassInfo JSDatabaseSyncConstructor::s_info = { "Database"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSDatabaseSyncConstructor) };
 
 JSDatabaseSync* JSDatabaseSync::create(VM& vm, Structure* structure, WTF::String&& location, DatabaseSyncOpenConfiguration&& config)
 {
@@ -843,7 +843,7 @@ JSC_DECLARE_HOST_FUNCTION(jsDatabaseSyncDispose);
     auto scope = DECLARE_THROW_SCOPE(vm);                                                     \
     JSDatabaseSync* self = dynamicDowncast<JSDatabaseSync>(callFrame->thisValue());           \
     if (!self) [[unlikely]] {                                                                 \
-        throwInvalidThisError(globalObject, scope, callFrame->thisValue(), "DatabaseSync"_s); \
+        throwInvalidThisError(globalObject, scope, callFrame->thisValue(), "Database"_s); \
         return {};                                                                            \
     }
 
@@ -1984,7 +1984,7 @@ JSDatabaseSyncConstructor* JSDatabaseSyncConstructor::create(VM& vm, JSGlobalObj
 
 void JSDatabaseSyncConstructor::finishCreation(VM& vm, JSGlobalObject*, JSObject* prototype)
 {
-    Base::finishCreation(vm, 1, "DatabaseSync"_s, PropertyAdditionMode::WithoutStructureTransition);
+    Base::finishCreation(vm, 1, "Database"_s, PropertyAdditionMode::WithoutStructureTransition);
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, prototype, PropertyAttribute::DontEnum | PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly);
     ASSERT(inherits(info()));
 }
@@ -1993,9 +1993,9 @@ void JSDatabaseSyncConstructor::finishCreation(VM& vm, JSGlobalObject*, JSObject
 // JSStatementSync
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ClassInfo JSStatementSync::s_info = { "StatementSync"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSStatementSync) };
-const ClassInfo JSStatementSyncPrototype::s_info = { "StatementSync"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSStatementSyncPrototype) };
-const ClassInfo JSStatementSyncConstructor::s_info = { "StatementSync"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSStatementSyncConstructor) };
+const ClassInfo JSStatementSync::s_info = { "Statement"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSStatementSync) };
+const ClassInfo JSStatementSyncPrototype::s_info = { "Statement"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSStatementSyncPrototype) };
+const ClassInfo JSStatementSyncConstructor::s_info = { "Statement"_s, &Base::s_info, nullptr, nullptr, CREATE_METHOD_TABLE(JSStatementSyncConstructor) };
 
 JSStatementSync* JSStatementSync::create(VM& vm, Structure* structure, JSDatabaseSync* db, SqlitePtr<sqlite3_stmt>&& stmt)
 {
@@ -2303,7 +2303,7 @@ JSC_DECLARE_HOST_FUNCTION(jsStatementSyncSetAllowUnknownNamedParameters);
     auto scope = DECLARE_THROW_SCOPE(vm);                                                      \
     JSStatementSync* self = dynamicDowncast<JSStatementSync>(callFrame->thisValue());          \
     if (!self) [[unlikely]] {                                                                  \
-        throwInvalidThisError(globalObject, scope, callFrame->thisValue(), "StatementSync"_s); \
+        throwInvalidThisError(globalObject, scope, callFrame->thisValue(), "Statement"_s); \
         return {};                                                                             \
     }
 
@@ -2589,7 +2589,7 @@ JSStatementSyncConstructor* JSStatementSyncConstructor::create(VM& vm, JSGlobalO
 
 void JSStatementSyncConstructor::finishCreation(VM& vm, JSGlobalObject*, JSObject* prototype)
 {
-    Base::finishCreation(vm, 0, "StatementSync"_s, PropertyAdditionMode::WithoutStructureTransition);
+    Base::finishCreation(vm, 0, "Statement"_s, PropertyAdditionMode::WithoutStructureTransition);
     putDirectWithoutTransition(vm, vm.propertyNames->prototype, prototype, PropertyAttribute::DontEnum | PropertyAttribute::DontDelete | PropertyAttribute::ReadOnly);
     ASSERT(inherits(info()));
 }

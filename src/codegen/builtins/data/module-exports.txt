@@ -53,7 +53,7 @@ node:querystring decode default encode escape parse stringify unescape unescapeB
 node:readline Interface clearLine clearScreenDown createInterface cursorTo default emitKeypressEvents moveCursor promises
 node:readline/promises Interface Readline createInterface default
 node:repl REPLServer REPL_MODE_SLOPPY REPL_MODE_STRICT Recoverable default isValidSyntax repl start writer
-node:sqlite DatabaseSync Session StatementSync backup constants default
+node:sqlite Database DatabaseSync Session Statement StatementSync backup constants default
 node:stream=function Duplex PassThrough Readable Stream Transform Writable _isArrayBufferView _isUint8Array _uint8ArrayToBuffer addAbortSignal compose default destroy duplexPair eos finished getDefaultHighWaterMark isDestroyed isDisturbed isErrored isReadable isWritable pipeline promises setDefaultHighWaterMark
 node:stream/consumers arrayBuffer blob buffer bytes default json text
 node:stream/promises default finished pipeline
