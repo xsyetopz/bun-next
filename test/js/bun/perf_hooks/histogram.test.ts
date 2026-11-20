@@ -4,7 +4,7 @@ import { describe, test } from "node:test";
 import { inspect } from "node:util";
 import { serialize } from "node:v8";
 import { MessageChannel, Worker } from "node:worker_threads";
-import { createHistogram, monitorEventLoopDelay } from "perf_hooks";
+import { createHistogram, createSlidingWindowHistogram, monitorEventLoopDelay } from "perf_hooks";
 
 // This file also runs under Node.js (`node --test`), which is where the expected values come from.
 // Node.js v26.13.1 fails the tests that are marked with this.
@@ -1830,13 +1830,44 @@ describe("Histogram", () => {
       h.enable();
       for (let i = 0; i < 3; i++) {
         await new Promise(resolve => setImmediate(resolve));
-        Bun.sleepSync(20);
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);
       }
       await new Promise(resolve => setImmediate(resolve));
       h.disable();
       assert(h.count >= 3, `count ${h.count}`);
       assert(h.max >= 20e6, `max ${h.max}`);
       assert(h.min >= 1);
+    });
+
+    test("createSlidingWindowHistogram adds up the chunks in the window", () => {
+      const h = createSlidingWindowHistogram({ chunks: 2, recordsPerChunk: 2, highest: 10 });
+      const window = () => {
+        const { count, min, max, exceeds } = h.snapshot();
+        return { count, min, max, exceeds };
+      };
+      assert.deepStrictEqual(window(), { count: 0, min: 9223372036854776000, max: 0, exceeds: 0 });
+      [1, 11, 3, 4].forEach(value => h.record(value));
+      assert.deepStrictEqual(window(), { count: 3, min: 1, max: 4, exceeds: 1 });
+      h.record(5n);
+      assert.deepStrictEqual(window(), { count: 3, min: 3, max: 5, exceeds: 0 });
+      h.reset();
+      assert.deepStrictEqual(window(), { count: 0, min: 9223372036854776000, max: 0, exceeds: 0 });
+      assert.deepStrictEqual(
+        [
+          () => createSlidingWindowHistogram({ chunks: 2 } as any),
+          () => createSlidingWindowHistogram({ chunks: 0, recordsPerChunk: 1 }),
+          () => createSlidingWindowHistogram({ chunks: 2, chunkDuration: 18_446_744_073_710 }),
+          () => h.record(-1n),
+          () => h.record(-1),
+        ].map(thrown),
+        [
+          `TypeError ERR_INVALID_ARG_VALUE: The argument 'options' must specify exactly one of "chunkDuration" or "recordsPerChunk". Received { chunks: 2 }`,
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.chunks" is out of range. It must be >= 1 && <= 1024. Received 0',
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.chunkDuration" is out of range. It must be >= 1 && <= 18446744073709. Received 18_446_744_073_710',
+          "RangeError ERR_OUT_OF_RANGE: value is out of range",
+          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 0 && <= 9007199254740991. Received -1',
+        ],
+      );
     });
 
     test("a receiver of another class", () => {

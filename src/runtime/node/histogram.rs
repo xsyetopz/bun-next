@@ -23,6 +23,10 @@ use crate::generated_bindgen::histogram::{
 use crate::jsc_hooks::timer_all;
 use crate::node::util::validators;
 
+#[path = "histogram/sliding_window.rs"]
+mod sliding_window;
+pub(crate) use sliding_window::{SlidingWindowHistogram, create_sliding_window};
+
 /// The GC is told what JavaScriptCore tells it of a `SharedArrayBuffer`, which also grows and which a structured clone
 /// also shares with other threads. Every object, a clone too, counts the whole size (`JSArrayBuffer::finishCreation`):
 /// bindgen does that, from `estimated_size`. Growth counts in the thread that grew it (`ArrayBuffer::grow`).

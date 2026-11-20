@@ -189,6 +189,19 @@ export const ELDHistogram = b.class({
   },
 });
 
+/** https://github.com/nodejs/node/blob/v26.13.1/lib/internal/histogram.js#L848 */
+export const SlidingWindowHistogram = b.class({
+  ...nodeClass,
+  rustPath: "crate::node::histogram::SlidingWindowHistogram",
+  estimatedSize: true,
+  proto: {
+    record: { args: { val: b.any }, length: 1, passThis: true, capability: "js", throws: true },
+    /** A `Histogram` with the values of the chunks in the window. */
+    snapshot: { returns: Histogram, capability: "heap" },
+    reset: {},
+  },
+});
+
 const range = { lowest: b.u64.allowBigInt, highest: b.u64.allowBigInt, figures: b.u32 };
 /** Throws if no histogram has this range and precision. */
 export const createRecordable = b.fn({
@@ -201,6 +214,13 @@ export const createRecordable = b.fn({
 export const createInterval = b.fn({
   args: { resolution: b.f64, samplePerIteration: b.bool, ...range },
   returns: ELDHistogram,
+  capability: "heap",
+  throws: true,
+});
+/** Throws if no histogram has this range and precision. `rotateAt` is in nanoseconds if `timeBased`, else in values. */
+export const createSlidingWindow = b.fn({
+  args: { ...range, chunks: b.u32, timeBased: b.bool, rotateAt: b.u64.allowBigInt },
+  returns: SlidingWindowHistogram,
   capability: "heap",
   throws: true,
 });

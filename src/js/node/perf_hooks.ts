@@ -17,6 +17,7 @@ const {
 
 const createRecordable = $bindgen("histogram.bind.ts", "createRecordable");
 const createInterval = $bindgen("histogram.bind.ts", "createInterval");
+const createSlidingWindow = $bindgen("histogram.bind.ts", "createSlidingWindow");
 const isHistogram = $bindgen("histogram.bind.ts", "isHistogram");
 
 const NumberMAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
@@ -370,6 +371,49 @@ export default {
     if (threshold < 0) throw $ERR_OUT_OF_RANGE("options.threshold", ">= 0", threshold);
 
     return createRecordable(lowest, highest, figures, halfLife, threshold);
+  },
+  // https://github.com/nodejs/node/blob/v26.13.1/lib/internal/histogram.js#L983
+  createSlidingWindowHistogram: function createSlidingWindowHistogram(options: {
+    chunks: number;
+    chunkDuration?: number;
+    recordsPerChunk?: number;
+    lowest?: number | bigint;
+    highest?: number | bigint;
+    figures?: number;
+  }) {
+    validateObject(options, "options");
+    const {
+      chunks,
+      chunkDuration,
+      recordsPerChunk,
+      lowest = 1,
+      highest = NumberMAX_SAFE_INTEGER,
+      figures = 3,
+    } = options;
+
+    validateInteger(chunks, "options.chunks", 1, 1024);
+    validateHistogramOptions(lowest, highest, figures);
+
+    const timeBased = chunkDuration !== undefined;
+    if (timeBased === (recordsPerChunk !== undefined)) {
+      throw $ERR_INVALID_ARG_VALUE(
+        "options",
+        options,
+        'must specify exactly one of "chunkDuration" or "recordsPerChunk"',
+      );
+    }
+
+    let rotateAt;
+    if (timeBased) {
+      // The largest whole number of milliseconds whose nanoseconds fit in 64 bits.
+      validateInteger(chunkDuration, "options.chunkDuration", 1, 18_446_744_073_709);
+      rotateAt = BigInt(chunkDuration) * 1_000_000n;
+    } else {
+      validateInteger(recordsPerChunk, "options.recordsPerChunk", 1, NumberMAX_SAFE_INTEGER);
+      rotateAt = BigInt(recordsPerChunk);
+    }
+
+    return createSlidingWindow(lowest, highest, figures, chunks, timeBased, rotateAt);
   },
   PerformanceResourceTiming,
 };

@@ -252,9 +252,9 @@ test("timerify is exposed on both performance and as a top-level export (Node v2
   expect(perf.timerify).toBeFunction();
 });
 
-// Captured from the real node v26.3.0 binary:
-// `node -p "Object.keys(require('perf_hooks')).sort()"`.
-test("export surface matches Node v26.3.0", () => {
+// The keys of `module.exports` in https://github.com/nodejs/node/blob/v26.13.1/lib/perf_hooks.js,
+// less `importHistogram`, which Bun does not have yet.
+test("export surface matches Node v26.13.1", () => {
   const nodeExports = [
     "Performance",
     "PerformanceEntry",
@@ -265,6 +265,7 @@ test("export surface matches Node v26.3.0", () => {
     "PerformanceResourceTiming",
     "constants",
     "createHistogram",
+    "createSlidingWindowHistogram",
     "eventLoopUtilization",
     "monitorEventLoopDelay",
     "performance",
