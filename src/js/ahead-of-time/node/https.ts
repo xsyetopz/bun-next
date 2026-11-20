@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/https.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 95c4c778f38564720fd172eefcb2549f3b525352f189c741d6170e9e5591d30f.
+// Written against that file with the SHA-256 eac487188fec7ff5f738e2de5bd1ff7bfde1556df84166c05aba52ad8be4a47b.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:https"
@@ -473,6 +473,7 @@ Agent.prototype.getName = function getName(options = kEmptyObject) {
     caFile,
     allowPartialTrustChain,
     secureContext,
+    certificateCompression,
   } = options;
 
   name += ":";
@@ -541,6 +542,7 @@ Agent.prototype.getName = function getName(options = kEmptyObject) {
   if (caFile) name += `:caFile=${JSONStringify(caFile)}`;
   if (allowPartialTrustChain) name += ":allowPartialTrustChain";
   if (secureContext) name += `:secureContext=${poolKeyPart(secureContext)}`;
+  if (certificateCompression) name += `:certificateCompression=${JSONStringify(certificateCompression)}`;
 
   const perRequestCheckServerIdentity = options[kPerRequestCheckServerIdentity];
   if (perRequestCheckServerIdentity) name += `:${perRequestCheckServerIdentity}`;

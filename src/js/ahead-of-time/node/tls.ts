@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/tls.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 ee5ac146f5e92a0a2950d437cd7548198b4a2f79feaf5905835737dbf1d982eb.
+// Written against that file with the SHA-256 83c1a064ba1fa4a8977d5e7a7b90a18be0deb312db06b557c29abb134cdc728f.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 // Hardcoded module "node:tls"
@@ -32,6 +32,7 @@ const {
   stripTls13CipherNames,
   validateSecureContextOptions,
   SSL_OP_CIPHER_SERVER_PREFERENCE,
+  assertCertificateCompressionRange,
 } = require("internal/tls");
 const {
   validateString,
@@ -121,6 +122,7 @@ declare global {
       allowPartialTrustChain: boolean | undefined;
       sessionTimeout: number | undefined;
       sigalgs: string | null | undefined;
+      certificateCompression: string[] | null | undefined;
       ecdhCurve: string | undefined;
       passphrase: string | undefined;
       secureOptions: number | undefined;
@@ -654,6 +656,7 @@ function newNativeSecureContext(options?: TLSOptions | null, cached = false) {
         minVersion = tlsStringToProtocolVersion(optMinVersion ?? DEFAULT_MIN_VERSION);
         maxVersion = tlsStringToProtocolVersion(optMaxVersion ?? DEFAULT_MAX_VERSION);
       }
+      assertCertificateCompressionRange(options.certificateCompression, maxVersion);
       options = { ...options, minVersion, maxVersion };
     }
   }
@@ -1216,6 +1219,7 @@ function buildSharedCreds(server, options: TLSOptions | null | undefined) {
     allowPartialTrustChain: server.allowPartialTrustChain,
     sessionTimeout: server.sessionTimeout,
     sigalgs: server.sigalgs,
+    certificateCompression: server.certificateCompression,
     ecdhCurve: server.ecdhCurve ?? DEFAULT_ECDH_CURVE,
     passphrase: server.passphrase,
     secureProtocol: server.secureProtocol,
@@ -1275,6 +1279,7 @@ function Server(this: $Node.TLSServer, options?, secureConnectionListener?): voi
   this.allowPartialTrustChain = undefined;
   this.sessionTimeout = undefined;
   this.sigalgs = undefined;
+  this.certificateCompression = undefined;
   this.ecdhCurve = undefined;
   this.passphrase = undefined;
   this.secureOptions = undefined;
@@ -1391,6 +1396,8 @@ function Server(this: $Node.TLSServer, options?, secureConnectionListener?): voi
       }
       next.sigalgs = sigalgs;
 
+      next.certificateCompression = options.certificateCompression;
+
       const ecdhCurve = options.ecdhCurve;
       if (ecdhCurve !== undefined) validateString(ecdhCurve, "options.ecdhCurve");
       next.ecdhCurve = ecdhCurve;
@@ -1451,6 +1458,7 @@ function Server(this: $Node.TLSServer, options?, secureConnectionListener?): voi
       this.allowPartialTrustChain = next.allowPartialTrustChain;
       this.sessionTimeout = next.sessionTimeout;
       this.sigalgs = next.sigalgs;
+      this.certificateCompression = next.certificateCompression;
       this.ecdhCurve = next.ecdhCurve;
       this.passphrase = next.passphrase;
       this.servername = next.servername;
@@ -1477,6 +1485,7 @@ function Server(this: $Node.TLSServer, options?, secureConnectionListener?): voi
         allowPartialTrustChain: this.allowPartialTrustChain,
         sessionTimeout: this.sessionTimeout ?? 0,
         sigalgs: this.sigalgs,
+        certificateCompression: this.certificateCompression,
         ecdhCurve: this.ecdhCurve ?? DEFAULT_ECDH_CURVE,
         passphrase: this.passphrase,
         secureOptions: this.secureOptions,
@@ -1685,6 +1694,11 @@ function getCiphers() {
   return ArrayPrototypeSort.$call(ciphers);
 }
 
+// Bun's BoringSSL contexts compress with each of them; a copy, as in Node, so callers cannot change the answer.
+function getCertificateCompressionAlgorithms() {
+  return ["zlib", "brotli", "zstd"];
+}
+
 // Convert protocols array into valid OpenSSL protocols list
 // ("\x06spdy/2\x08http/1.1\x08http/1.0")
 function convertProtocols(protocols: string[]) {
@@ -1867,6 +1881,7 @@ interface TLSModule {
   DEFAULT_MAX_VERSION: string;
   DEFAULT_MIN_VERSION: string;
   getCiphers: typeof getCiphers;
+  getCertificateCompressionAlgorithms: typeof getCertificateCompressionAlgorithms;
   setDefaultCACertificates: typeof setDefaultCACertificates;
   parseCertString: typeof parseCertString;
   SecureContext: typeof SecureContext;
@@ -1919,6 +1934,7 @@ const tlsExports: TLSModule = {
     DEFAULT_MIN_VERSION = value;
   },
   getCiphers,
+  getCertificateCompressionAlgorithms,
   setDefaultCACertificates,
   parseCertString,
   SecureContext,

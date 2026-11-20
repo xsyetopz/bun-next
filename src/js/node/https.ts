@@ -469,6 +469,7 @@ Agent.prototype.getName = function getName(options = kEmptyObject) {
     caFile,
     allowPartialTrustChain,
     secureContext,
+    certificateCompression,
   } = options;
 
   name += ":";
@@ -537,6 +538,7 @@ Agent.prototype.getName = function getName(options = kEmptyObject) {
   if (caFile) name += `:caFile=${JSONStringify(caFile)}`;
   if (allowPartialTrustChain) name += ":allowPartialTrustChain";
   if (secureContext) name += `:secureContext=${poolKeyPart(secureContext)}`;
+  if (certificateCompression) name += `:certificateCompression=${JSONStringify(certificateCompression)}`;
 
   const perRequestCheckServerIdentity = options[kPerRequestCheckServerIdentity];
   if (perRequestCheckServerIdentity) name += `:${perRequestCheckServerIdentity}`;

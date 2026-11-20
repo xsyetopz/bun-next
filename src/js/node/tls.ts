@@ -17,6 +17,7 @@ const {
   stripTls13CipherNames,
   validateSecureContextOptions,
   SSL_OP_CIPHER_SERVER_PREFERENCE,
+  assertCertificateCompressionRange,
 } = require("internal/tls");
 const {
   validateString,
@@ -520,6 +521,7 @@ function newNativeSecureContext(options, cached = false) {
         minVersion = tlsStringToProtocolVersion(optMinVersion ?? DEFAULT_MIN_VERSION);
         maxVersion = tlsStringToProtocolVersion(optMaxVersion ?? DEFAULT_MAX_VERSION);
       }
+      assertCertificateCompressionRange(options.certificateCompression, maxVersion);
       options = { ...options, minVersion, maxVersion };
     }
   }
@@ -1066,6 +1068,7 @@ function buildSharedCreds(server, options) {
     allowPartialTrustChain: server.allowPartialTrustChain,
     sessionTimeout: server.sessionTimeout,
     sigalgs: server.sigalgs,
+    certificateCompression: server.certificateCompression,
     ecdhCurve: server.ecdhCurve ?? DEFAULT_ECDH_CURVE,
     passphrase: server.passphrase,
     secureProtocol: server.secureProtocol,
@@ -1125,6 +1128,7 @@ function Server(options, secureConnectionListener): void {
   this.allowPartialTrustChain = undefined;
   this.sessionTimeout = undefined;
   this.sigalgs = undefined;
+  this.certificateCompression = undefined;
   this.ecdhCurve = undefined;
   this.passphrase = undefined;
   this.secureOptions = undefined;
@@ -1241,6 +1245,8 @@ function Server(options, secureConnectionListener): void {
       }
       next.sigalgs = sigalgs;
 
+      next.certificateCompression = options.certificateCompression;
+
       const ecdhCurve = options.ecdhCurve;
       if (ecdhCurve !== undefined) validateString(ecdhCurve, "options.ecdhCurve");
       next.ecdhCurve = ecdhCurve;
@@ -1301,6 +1307,7 @@ function Server(options, secureConnectionListener): void {
       this.allowPartialTrustChain = next.allowPartialTrustChain;
       this.sessionTimeout = next.sessionTimeout;
       this.sigalgs = next.sigalgs;
+      this.certificateCompression = next.certificateCompression;
       this.ecdhCurve = next.ecdhCurve;
       this.passphrase = next.passphrase;
       this.servername = next.servername;
@@ -1327,6 +1334,7 @@ function Server(options, secureConnectionListener): void {
         allowPartialTrustChain: this.allowPartialTrustChain,
         sessionTimeout: this.sessionTimeout ?? 0,
         sigalgs: this.sigalgs,
+        certificateCompression: this.certificateCompression,
         ecdhCurve: this.ecdhCurve ?? DEFAULT_ECDH_CURVE,
         passphrase: this.passphrase,
         secureOptions: this.secureOptions,
@@ -1530,6 +1538,11 @@ function getCiphers() {
   const ciphers = ["tls_aes_128_gcm_sha256", "tls_aes_256_gcm_sha384", "tls_chacha20_poly1305_sha256"];
   for (const name of getValidCiphersSet()) ArrayPrototypePush.$call(ciphers, StringPrototypeToLowerCase.$call(name));
   return ArrayPrototypeSort.$call(ciphers);
+}
+
+// Bun's BoringSSL contexts compress with each of them; a copy, as in Node, so callers cannot change the answer.
+function getCertificateCompressionAlgorithms() {
+  return ["zlib", "brotli", "zstd"];
 }
 
 // Convert protocols array into valid OpenSSL protocols list
@@ -1744,6 +1757,7 @@ const tlsExports = {
     DEFAULT_MIN_VERSION = value;
   },
   getCiphers,
+  getCertificateCompressionAlgorithms,
   setDefaultCACertificates,
   parseCertString,
   SecureContext,

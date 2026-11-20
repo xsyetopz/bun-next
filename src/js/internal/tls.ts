@@ -1,5 +1,5 @@
 const { isTypedArray, isArrayBuffer, isArrayBufferView } = require("node:util/types");
-const { validateString, validateBuffer } = require("internal/validators");
+const { validateString, validateBuffer, validateArray } = require("internal/validators");
 
 const StringPrototypeSplit: (this: string, separator: string | RegExp, limit?: number) => string[] =
   String.prototype.split;
@@ -191,10 +191,12 @@ function validateSecureContextOptions(options) {
     clientCertEngine,
     dhparam,
     secureProtocol,
+    certificateCompression,
   } = options;
   validateSecureProtocol(secureProtocol, minVersion, maxVersion);
   if (ciphers !== undefined && ciphers !== null) validateString(ciphers, "options.ciphers");
   if (passphrase !== undefined && passphrase !== null) validateString(passphrase, "options.passphrase");
+  if (certificateCompression != null) validateCertificateCompression(certificateCompression);
   if (sigalgs !== undefined && sigalgs !== null) {
     validateString(sigalgs, "options.sigalgs");
     if (sigalgs === "") throw $ERR_INVALID_ARG_VALUE("options.sigalgs", sigalgs);
@@ -277,6 +279,42 @@ function validateSecureContextOptions(options) {
       throw $ERR_OUT_OF_RANGE("options.sessionTimeout", ">= 0 && <= 2147483647", sessionTimeout);
     }
   }
+}
+
+// https://github.com/nodejs/node/blob/v26.13.1/lib/internal/tls/secure-context.js#L215
+function validateCertificateCompression(certificateCompression) {
+  validateArray(certificateCompression, "options.certificateCompression");
+  const length = certificateCompression.length;
+  if (length > 3) {
+    throw $ERR_INVALID_ARG_VALUE(
+      "options.certificateCompression",
+      certificateCompression,
+      "can specify at most 3 algorithms",
+    );
+  }
+  for (let i = 0; i < length; i++) {
+    const algorithm = certificateCompression[i];
+    if (algorithm !== "zlib" && algorithm !== "brotli" && algorithm !== "zstd") {
+      throw $ERR_INVALID_ARG_VALUE(
+        `options.certificateCompression[${i}]`,
+        algorithm,
+        "must be 'zlib', 'brotli', or 'zstd'",
+      );
+    }
+  }
+}
+
+// RFC 8879 compresses TLS 1.3 handshakes only. Node throws this from SecureContext::SetCertificateCompression, so
+// the message names no argument.
+function assertCertificateCompressionRange(certificateCompression, maxVersion: number) {
+  if (!certificateCompression?.length || maxVersion >= TLS1_3_VERSION) return;
+  const err = new TypeError(
+    "certificateCompression requires a TLS protocol range that includes TLSv1.3",
+  ) as TypeError & {
+    code: string;
+  };
+  err.code = "ERR_INVALID_ARG_VALUE";
+  throw err;
 }
 
 const SSL_OP_CIPHER_SERVER_PREFERENCE = 0x00400000;
@@ -444,6 +482,13 @@ function nodeClientTlsToNative(options) {
   return tls && unsealPfxForNative(tls);
 }
 
+// BoringSSL's names for failures that OpenSSL, which Node's codes come from, reports under another reason.
+const openSSLReasons: Record<string, string> = {
+  __proto__: null,
+  // A compressed certificate chain whose uncompressed length is over max_cert_list.
+  UNCOMPRESSED_CERT_TOO_LARGE: "EXCESSIVE_MESSAGE_SIZE",
+} as never;
+
 /**
  * Build the Error for a handshake that failed before completing. A fatal SSL
  * protocol error (wrong version number, bad record, ...) carries the OpenSSL
@@ -464,10 +509,11 @@ function tlsHandshakeError(verifyError: { code?: string; reason?: string; messag
     // https://github.com/nodejs/node/blob/v26.3.0/src/crypto/crypto_tls.cc#L876-L891
     const match = /^error:[0-9a-f]+:([^:]*):([^:]*):(.+)$/.exec(reason);
     if (match) {
+      const reason = openSSLReasons[match[3]] ?? match[3];
       err.library = match[1];
       err.function = match[2];
-      err.reason = match[3];
-      err.code = `ERR_SSL_${match[3]}`;
+      err.reason = reason;
+      err.code = `ERR_SSL_${reason}`;
     } else {
       err.code = verifyErrorCode;
     }
@@ -478,6 +524,7 @@ function tlsHandshakeError(verifyError: { code?: string; reason?: string; messag
 
 export {
   SSL_OP_CIPHER_SERVER_PREFERENCE,
+  assertCertificateCompressionRange,
   nodeClientTlsKeys,
   nodeClientTlsToNative,
   normalizePemKeyOption,
