@@ -214,6 +214,62 @@ describe("Histogram", () => {
     });
   });
 
+  describe("snapshot and diff", () => {
+    test("a snapshot is a read-only Histogram that recording does not change", () => {
+      const h = createHistogram();
+      h.record(5);
+      h.reset();
+      h.record(7);
+      const snapshot = (h as any).snapshot();
+      h.record(9);
+      assert.strictEqual(snapshot.constructor.name, "Histogram");
+      assert.strictEqual(snapshot.record, undefined);
+      assert.strictEqual(inspect(snapshot, { depth: -1 }), "[Histogram]");
+      assert.deepStrictEqual([snapshot.count, snapshot.min, snapshot.max, snapshot.resetCount], [1, 7, 7, 1]);
+      assert.strictEqual(h.count, 2);
+    });
+
+    test("diff has what was recorded since the snapshot", () => {
+      const h = createHistogram({ highest: 100 });
+      for (const value of [3, 3, 1000]) h.record(value);
+      const before = (h as any).snapshot();
+      for (const value of [3, 50, 1000]) h.record(value);
+      const delta = (h as any).diff(before);
+      assert.strictEqual(delta.constructor.name, "Histogram");
+      assert.deepStrictEqual(
+        [delta.count, delta.min, delta.max, delta.exceeds, delta.resetCount, delta.countAt(3)],
+        [2, 3, 50, 1, 0, 1],
+      );
+      assert.strictEqual((h as any).diff(h).count, 0);
+    });
+
+    test("diff rejects a histogram that is not an earlier snapshot", () => {
+      const h = createHistogram();
+      h.record(1);
+      const later = (h as any).snapshot();
+      h.reset();
+      assert.throws(() => (h as any).diff(later), {
+        code: "ERR_INVALID_STATE",
+        message: "Values were removed from the histogram after other was taken",
+      });
+      const empty = (h as any).snapshot();
+      h.record(1);
+      assert.throws(() => empty.diff((h as any).snapshot()), {
+        code: "ERR_INVALID_ARG_VALUE",
+        message: "other contains values that are not in the histogram",
+      });
+      for (const options of [{ lowest: 2 }, { highest: 1000 }, { figures: 2 }]) {
+        assert.throws(() => (h as any).diff(createHistogram(options)), {
+          code: "ERR_INVALID_ARG_VALUE",
+          message: "other must have the same configuration as the histogram",
+        });
+      }
+      for (const other of [undefined, null, {}, 1]) {
+        assert.throws(() => (h as any).diff(other), { code: "ERR_INVALID_ARG_TYPE" });
+      }
+    });
+  });
+
   describe("exceeds functionality", () => {
     test("basic exceeds counting", () => {
       const h = createHistogram({ lowest: 1, highest: 10, figures: 1 });
@@ -1444,6 +1500,7 @@ describe("Histogram", () => {
         "ccdf/1",
         "cdf/1",
         "countAt/1",
+        "diff/1",
         "get count",
         "get countBigInt",
         "get exceeds",
@@ -1460,6 +1517,7 @@ describe("Histogram", () => {
         "percentile/1",
         "percentileBigInt/1",
         "reset/0",
+        "snapshot/0",
         "toJSON/0",
       ]);
       assert.strictEqual(

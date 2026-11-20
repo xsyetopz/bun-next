@@ -52,6 +52,16 @@ export const Histogram = b.class({
     ccdf: atValue,
     /** How many times `reset()` or `subtract()` removed values. */
     resetCount: { getter: b.u64 },
+    /** A `Histogram` with the values recorded so far, which recording more does not change. */
+    snapshot: { returns: b.self, capability: "heap" },
+    /** A `Histogram` with the values recorded since `other` was a snapshot of this one. */
+    diff: {
+      args: { other: b.self },
+      expected: { other: ["Histogram"] },
+      returns: b.self,
+      capability: "heap",
+      throws: true,
+    },
     reset: {},
     toJSON: { returns: HistogramJSON, capability: "heap", throws: true },
     "@@inspectCustom": { builtin: true, length: 2 },

@@ -120,9 +120,22 @@ impl Histogram {
     }
 
     fn read<T>(&self, read: impl FnOnce(&bun_histogram::Histogram) -> T) -> T {
+        self.read_state(|state| read(&state.histogram))
+    }
+
+    fn read_state<T>(&self, read: impl FnOnce(&State) -> T) -> T {
         match &*self.counts.borrow() {
-            Counts::Own(state) => read(&state.histogram),
-            Counts::Shared(state) => read(&state.lock().histogram),
+            Counts::Own(state) => read(state),
+            Counts::Shared(state) => read(&state.lock()),
+        }
+    }
+
+    /// A `Histogram` that nothing else records into.
+    fn detached(state: State) -> Self {
+        Histogram {
+            size: Arc::new(Size(AtomicUsize::new(state.histogram.memory_size()))),
+            counts: RefCell::new(Counts::Own(state)),
+            interval: None,
         }
     }
 
@@ -284,7 +297,50 @@ impl Histogram {
     }
 
     pub(crate) fn get_reset_count(&self) -> u64 {
-        self.with(|state| state.reset_count).0
+        self.read_state(|state| state.reset_count)
+    }
+
+    pub(crate) fn snapshot<'a>(&self, heap: &JsHeap<'a>) -> JsWrapper<'a, Self> {
+        Self::detached(self.read_state(State::clone)).into_js(heap)
+    }
+
+    /// What was recorded here since `other` was a snapshot of it.
+    pub(crate) fn diff<'a>(
+        &self,
+        heap: &JsHeap<'a>,
+        other: &Histogram,
+    ) -> bindgen::Result<'a, JsWrapper<'a, Self>> {
+        // https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc
+        let this = self.read_state(State::clone);
+        let diff = other.read_state(|other| {
+            if !this.histogram.same_layout(&other.histogram) {
+                return Err((
+                    ErrorCode::INVALID_ARG_VALUE,
+                    "other must have the same configuration as the histogram",
+                ));
+            }
+            if this.reset_count != other.reset_count {
+                return Err((
+                    ErrorCode::INVALID_STATE,
+                    "Values were removed from the histogram after other was taken",
+                ));
+            }
+            this.histogram.diff(&other.histogram).ok_or((
+                ErrorCode::INVALID_ARG_VALUE,
+                "other contains values that are not in the histogram",
+            ))
+        });
+        match diff {
+            Ok(histogram) => {
+                let state = State {
+                    histogram,
+                    previous_ns: 0,
+                    reset_count: 0,
+                };
+                Ok(Self::detached(state).into_js(heap))
+            }
+            Err((code, message)) => Err(heap.error_with_code(code, format_args!("{message}"))),
+        }
     }
 
     pub(crate) fn reset(&self) {

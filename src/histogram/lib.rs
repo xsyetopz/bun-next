@@ -32,6 +32,7 @@ const CHUNK_LEN: usize = 512;
 
 #[derive(Clone)]
 pub struct Histogram {
+    lowest_discernible_value: u64,
     highest_trackable_value: u64,
     unit_magnitude: u32,
     sub_bucket_half_count_magnitude: u32,
@@ -83,6 +84,7 @@ impl Histogram {
             return None;
         }
         Some(Self {
+            lowest_discernible_value: lowest,
             highest_trackable_value: highest,
             unit_magnitude,
             sub_bucket_half_count_magnitude,
@@ -174,6 +176,28 @@ impl Histogram {
         };
     }
 
+    /// Whether `other` was created with the same range and precision, so that its slots are those here.
+    pub fn same_layout(&self, other: &Self) -> bool {
+        self.lowest_discernible_value == other.lowest_discernible_value
+            && self.highest_trackable_value == other.highest_trackable_value
+            && self.sub_bucket_half_count_magnitude == other.sub_bucket_half_count_magnitude
+    }
+
+    /// What was counted here and not in `earlier`, which has the same layout, or `None` if `earlier` has a count
+    /// that is higher than the one here.
+    pub fn diff(&self, earlier: &Self) -> Option<Self> {
+        if earlier.exceeds > self.exceeds
+            || earlier
+                .counts()
+                .any(|(index, n)| self.count_at_index(index) < n)
+        {
+            return None;
+        }
+        let mut diff = self.clone();
+        diff.subtract(earlier);
+        Some(diff)
+    }
+
     /// Moves the counts out, which leaves `self` as it was when it was created.
     pub fn take(&mut self) -> Self {
         let taken = Self {
@@ -210,7 +234,10 @@ impl Histogram {
         if value > self.highest_trackable_value {
             return 0;
         }
-        let index = self.index_of(value);
+        self.count_at_index(self.index_of(value))
+    }
+
+    fn count_at_index(&self, index: usize) -> u64 {
         match self.chunks.get(index / CHUNK_LEN) {
             Some(Some(chunk)) => chunk.get(index % CHUNK_LEN).copied().unwrap_or(0),
             _ => 0,
