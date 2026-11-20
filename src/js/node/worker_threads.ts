@@ -1301,6 +1301,7 @@ export default {
   MessagePort,
   getEnvironmentData,
   setEnvironmentData,
+  locks: require("internal/locks").locks,
   markAsUntransferable,
   markAsUncloneable,
   isMarkedAsUntransferable,

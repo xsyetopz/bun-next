@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/worker_threads.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 0b993ee2836d4f38faf64265187e2ca6788ced95497315394f0517c0df295174.
+// Written against that file with the SHA-256 416d80bf55057c9b6fb6d3f602c289b1252374fb5c04a30d9f7e574a8f114053.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 declare const self: EventTarget & {
@@ -1340,6 +1340,7 @@ export default {
   MessagePort,
   getEnvironmentData,
   setEnvironmentData,
+  locks: require("internal/locks").locks,
   markAsUntransferable,
   markAsUncloneable,
   isMarkedAsUntransferable,

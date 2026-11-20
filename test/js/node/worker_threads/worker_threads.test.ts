@@ -3371,3 +3371,103 @@ test("the worker_threads diagnostics channel publishes each new Worker", async (
     dc.unsubscribe("worker_threads", onWorker);
   }
 });
+
+describe("worker_threads.locks", () => {
+  const { locks } = wt;
+
+  test("grants in request order and reports held and pending locks", async () => {
+    const order: string[] = [];
+    const { promise: hold, resolve: releaseFirst } = Promise.withResolvers<void>();
+    const first = locks.request("order", async lock => {
+      order.push(`${lock.name}:${lock.mode}`);
+      await hold;
+      return 1;
+    });
+    const second = locks.request("order", { mode: "shared" }, () => (order.push("second"), 2));
+    const missed = locks.request("order", { ifAvailable: true }, lock => (order.push(`missed:${lock}`), 3));
+    expect(order).toEqual(["order:exclusive", "missed:null"]);
+    const snapshot = await locks.query();
+    expect(snapshot.held.map(l => [l.name, l.mode])).toEqual([["order", "exclusive"]]);
+    expect(snapshot.pending.map(l => [l.name, l.mode])).toEqual([["order", "shared"]]);
+    expect(snapshot.held[0].clientId).toBe(`node-${process.pid}-${threadId}`);
+    releaseFirst();
+    expect(await Promise.all([first, second, missed])).toEqual([1, 2, 3]);
+    expect(order).toEqual(["order:exclusive", "missed:null", "second"]);
+    expect(await locks.query()).toEqual({ held: [], pending: [] });
+  });
+
+  test("steal rejects the holder with AbortError and an aborted signal withdraws a pending request", async () => {
+    const { promise: hold, resolve: releaseHolder } = Promise.withResolvers<void>();
+    const holder = locks.request("steal", () => hold);
+    expect(await locks.request("steal", { steal: true }, lock => lock!.mode)).toBe("exclusive");
+    expect(await holder.catch(e => e.name)).toBe("AbortError");
+    releaseHolder();
+
+    const { promise: block, resolve: unblock } = Promise.withResolvers<void>();
+    const blocker = locks.request("abort", () => block);
+    const controller = new AbortController();
+    const waiting = locks.request("abort", { signal: controller.signal }, () => "granted");
+    controller.abort(new Error("stop"));
+    expect(await waiting.catch(e => e.message)).toBe("stop");
+    expect((await locks.query()).pending).toEqual([]);
+    unblock();
+    await blocker;
+  });
+
+  test("validates like node", async () => {
+    const reject = (...args: any[]) =>
+      (locks.request as any)(...args).then(
+        () => "resolved",
+        (e: any) => `${e.name}: ${e instanceof DOMException ? e.message : e.code}`,
+      );
+    expect(await reject("-x", () => {})).toBe("NotSupportedError: Lock name may not start with hyphen");
+    expect(await reject("x", { steal: true, ifAvailable: true }, () => {})).toBe(
+      "NotSupportedError: ifAvailable and steal are mutually exclusive",
+    );
+    expect(await reject("x", { mode: "shared", steal: true }, () => {})).toBe(
+      'NotSupportedError: mode: "shared" and steal are mutually exclusive',
+    );
+    expect(await reject("x", { mode: "bogus" }, () => {})).toBe("TypeError: ERR_INVALID_ARG_VALUE");
+    expect(await reject("x", {})).toBe("TypeError: ERR_INVALID_ARG_TYPE");
+    expect(() => new (locks.constructor as any)()).toThrow(
+      expect.objectContaining({ code: "ERR_ILLEGAL_CONSTRUCTOR" }),
+    );
+    expect(Object.prototype.toString.call(locks)).toBe("[object LockManager]");
+  });
+
+  test("publishes the locks.request diagnostics channels", async () => {
+    const events: string[] = [];
+    const names = ["start", "grant", "miss", "end"];
+    const handlers = names.map(name => (message: any) => events.push(`${name}:${message.name}:${message.mode}`));
+    names.forEach((name, i) => dc.subscribe(`locks.request.${name}`, handlers[i]));
+    try {
+      await locks.request("dc", () => locks.request("dc", { ifAvailable: true }, () => {}));
+    } finally {
+      names.forEach((name, i) => dc.unsubscribe(`locks.request.${name}`, handlers[i]));
+    }
+    expect(events).toEqual([
+      "start:dc:exclusive",
+      "grant:dc:exclusive",
+      "start:dc:exclusive",
+      "miss:dc:exclusive",
+      "end:dc:exclusive",
+      "end:dc:exclusive",
+    ]);
+  });
+
+  test("locks are shared with workers and released when a worker terminates", async () => {
+    const worker = new Worker(
+      `const { locks, parentPort } = require("worker_threads");
+       locks.request("shared-with-worker", () => {
+         parentPort.postMessage("held");
+         return new Promise(() => {});
+       });`,
+      { eval: true },
+    );
+    await once(worker, "message");
+    expect(await locks.request("shared-with-worker", { ifAvailable: true }, lock => lock)).toBeNull();
+    const waiting = locks.request("shared-with-worker", lock => lock!.name);
+    await worker.terminate();
+    expect(await waiting).toBe("shared-with-worker");
+  });
+});
