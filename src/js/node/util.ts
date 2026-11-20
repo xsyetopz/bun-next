@@ -35,6 +35,7 @@ interface UtilModule {
   debug: typeof debuglog;
   debuglog: typeof debuglog;
   debounce: typeof import("internal/util/debounce").default;
+  throttle: typeof import("internal/util/throttle").default;
   deprecate: typeof deprecate;
   format: InspectModule["format"];
   styleText: typeof styleText;
@@ -839,6 +840,12 @@ var cjs_exports: UtilModule = {
   markPromiseAsHandled,
   promisify,
   setTraceSigInt,
+  get throttle() {
+    return require("internal/util/throttle");
+  },
+  set throttle(value) {
+    Object.defineProperty(cjs_exports, "throttle", { value, writable: true, enumerable: true, configurable: true });
+  },
   get stripVTControlCharacters() {
     return require("internal/util/inspect").stripVTControlCharacters;
   },

@@ -2593,6 +2593,8 @@ JSC_DEFINE_HOST_FUNCTION_WITH_ATTRIBUTES(Bun::jsFunctionMakeErrorWithCode, __att
         return JSC::JSValue::encode(createError(globalObject, ErrorCode::ERR_TRAILING_JUNK_AFTER_STREAM_END, "Trailing junk found after the end of the compressed stream"_s));
     case ErrorCode::ERR_STREAM_UNABLE_TO_PIPE:
         return JSC::JSValue::encode(createError(globalObject, ErrorCode::ERR_STREAM_UNABLE_TO_PIPE, "Cannot pipe to a closed or destroyed stream"_s));
+    case ErrorCode::ERR_THROTTLED:
+        return JSC::JSValue::encode(createError(globalObject, ErrorCode::ERR_THROTTLED, "The call was dropped by the throttled function"_s));
     case ErrorCode::ERR_ILLEGAL_CONSTRUCTOR:
         return JSC::JSValue::encode(createError(globalObject, ErrorCode::ERR_ILLEGAL_CONSTRUCTOR, "Illegal constructor"_s));
     case ErrorCode::ERR_DIR_CLOSED:

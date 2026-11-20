@@ -232,6 +232,7 @@ const errors: ErrorCodeMapping = [
   ["ERR_STREAM_WRAP", Error],
   ["ERR_STREAM_WRITE_AFTER_END", Error],
   ["ERR_STRING_TOO_LONG", Error],
+  ["ERR_THROTTLED", Error],
   ["ERR_TLS_CERT_ALTNAME_FORMAT", SyntaxError],
   ["ERR_TLS_CERT_ALTNAME_INVALID", Error],
   ["ERR_TLS_HANDSHAKE_TIMEOUT", Error],
