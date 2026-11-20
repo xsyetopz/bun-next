@@ -2,7 +2,15 @@ import { gc } from "bun";
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { bunEnv, bunExe } from "harness";
 import { AsyncLocalStorage } from "node:async_hooks";
-import { channel, Channel, hasSubscribers, subscribe, unsubscribe } from "node:diagnostics_channel";
+import {
+  BoundedChannel,
+  boundedChannel,
+  channel,
+  Channel,
+  hasSubscribers,
+  subscribe,
+  unsubscribe,
+} from "node:diagnostics_channel";
 
 describe("Channel", () => {
   // test-diagnostics-channel-has-subscribers.js
@@ -491,6 +499,79 @@ describe("TracingChannel", () => {
   // Port tests from:
   // https://github.com/search?q=repo%3Anodejs%2Fnode+test-diagnostics-channel+AND+%2Ftracing%2F&type=code
   test.todo("TODO");
+});
+
+describe("BoundedChannel", () => {
+  test("names its start and end channels and validates its argument", () => {
+    const bc = boundedChannel("bounded-names");
+    expect([bc.start.name, bc.end.name]).toEqual(["tracing:bounded-names:start", "tracing:bounded-names:end"]);
+    expect(Object.getOwnPropertyDescriptor(bc, "start")).toEqual({
+      value: bc.start,
+      writable: false,
+      enumerable: false,
+      configurable: false,
+    });
+    expect(bc).toBeInstanceOf(BoundedChannel);
+    expect([boundedChannel.length, bc.withScope.length, bc.run.length]).toEqual([1, 0, 3]);
+
+    const start = channel("bounded-start");
+    const end = channel("bounded-end");
+    const fromObject = boundedChannel({ start, end });
+    expect([fromObject.start, fromObject.end]).toEqual([start, end]);
+
+    for (const input of [1, null]) {
+      expect(() => boundedChannel(input as any)).toThrow(expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }));
+    }
+  });
+
+  test("run and withScope publish start and end around the work and enter bound stores", () => {
+    const bc = boundedChannel("bounded-run");
+    const store = new AsyncLocalStorage();
+    const log: unknown[] = [];
+    const handlers = {
+      start: (message: unknown, name: unknown) => log.push(["start", name, message]),
+      end: (message: unknown, name: unknown) => log.push(["end", name, message]),
+    };
+    expect(bc.hasSubscribers).toBe(false);
+    bc.subscribe(handlers);
+    bc.start.bindStore(store);
+    expect(bc.hasSubscribers).toBe(true);
+
+    const result = bc.run(
+      { id: 1 },
+      function (this: unknown, a: number, b: number) {
+        log.push(["fn", this, a, b, store.getStore()]);
+        return a + b;
+      },
+      "T",
+      2,
+      3,
+    );
+    {
+      using _ = bc.withScope({ id: 2 });
+      log.push(["body", store.getStore()]);
+    }
+    {
+      using _ = bc.withScope();
+    }
+    log.push(["after", store.getStore()]);
+
+    expect(result).toBe(5);
+    expect([bc.unsubscribe(handlers), bc.unsubscribe(handlers)]).toEqual([true, false]);
+    bc.start.unbindStore(store);
+    expect(bc.hasSubscribers).toBe(false);
+    expect(log).toEqual([
+      ["start", "tracing:bounded-run:start", { id: 1 }],
+      ["fn", "T", 2, 3, { id: 1 }],
+      ["end", "tracing:bounded-run:end", { id: 1 }],
+      ["start", "tracing:bounded-run:start", { id: 2 }],
+      ["body", { id: 2 }],
+      ["end", "tracing:bounded-run:end", { id: 2 }],
+      ["start", "tracing:bounded-run:start", {}],
+      ["end", "tracing:bounded-run:end", {}],
+      ["after", undefined],
+    ]);
+  });
 });
 
 const mocks = new Map();

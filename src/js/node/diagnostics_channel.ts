@@ -3,6 +3,7 @@
 
 const { validateFunction } = require("internal/validators");
 const { aggregateTwoErrors } = require("internal/errors");
+const { kEmptyObject } = require("internal/shared");
 
 const SafeMap = Map;
 const SafeFinalizationRegistry = FinalizationRegistry;
@@ -331,6 +332,106 @@ function assertChannel(value: unknown, name: string) {
   }
 }
 
+const boundedEvents = ["start", "end"] as const;
+type BoundedHandlers = Partial<Record<(typeof boundedEvents)[number], Subscription>>;
+type BoundedChannels = Record<(typeof boundedEvents)[number], AnyChannel>;
+
+function channelFromMap(nameOrChannels: string | BoundedChannels, name: (typeof boundedEvents)[number]) {
+  if (typeof nameOrChannels === "string") {
+    return channel(`tracing:${nameOrChannels}:${name}`);
+  }
+
+  if (typeof nameOrChannels === "object" && nameOrChannels !== null) {
+    const value = nameOrChannels[name];
+    assertChannel(value, `nameOrChannels.${name}`);
+    return value;
+  }
+
+  throw $ERR_INVALID_ARG_TYPE("nameOrChannels", ["string", "object", "BoundedChannel"], nameOrChannels);
+}
+
+class BoundedChannelScope {
+  #context: unknown;
+  #end: AnyChannel | undefined;
+  #scope: RunStoresScope | Disposable | undefined;
+
+  constructor(boundedChannel: BoundedChannel, context: unknown) {
+    if (!boundedChannel.hasSubscribers) return;
+
+    const { start, end } = boundedChannel;
+    this.#context = context;
+    this.#end = end;
+    this.#scope = start.withStoreScope(context);
+  }
+
+  [SymbolDispose]() {
+    const scope = this.#scope;
+    if (!scope) return;
+
+    this.#end!.publish(this.#context);
+    this.#scope = undefined;
+    scope[SymbolDispose]();
+  }
+}
+
+class BoundedChannel {
+  declare readonly start: AnyChannel;
+  declare readonly end: AnyChannel;
+
+  constructor(nameOrChannels: string | BoundedChannels) {
+    for (const eventName of boundedEvents) {
+      Object.defineProperty(this, eventName, {
+        __proto__: null,
+        value: channelFromMap(nameOrChannels, eventName),
+      });
+    }
+  }
+
+  get hasSubscribers() {
+    return this.start.hasSubscribers || this.end.hasSubscribers;
+  }
+
+  subscribe(handlers: BoundedHandlers) {
+    for (const name of boundedEvents) {
+      if (!handlers[name]) continue;
+
+      this[name].subscribe(handlers[name]);
+    }
+  }
+
+  unsubscribe(handlers: BoundedHandlers) {
+    let done = true;
+
+    for (const name of boundedEvents) {
+      if (!handlers[name]) continue;
+
+      if (!this[name].unsubscribe(handlers[name])) {
+        done = false;
+      }
+    }
+
+    return done;
+  }
+
+  withScope(context: unknown = kEmptyObject) {
+    return new BoundedChannelScope(this, context);
+  }
+
+  run(context: unknown, fn: Traced, thisArg?: unknown, ...args: unknown[]) {
+    context ??= {};
+    const scope = this.withScope(context);
+    try {
+      return fn.$apply(thisArg, args);
+    } finally {
+      scope[SymbolDispose]();
+    }
+  }
+}
+
+function boundedChannel(nameOrChannels: string | BoundedChannels) {
+  return new BoundedChannel(nameOrChannels);
+}
+
 interface TraceContext {
   result?: unknown;
   error?: unknown;
@@ -498,5 +599,7 @@ export default {
   subscribe,
   tracingChannel,
   unsubscribe,
+  boundedChannel,
   Channel,
+  BoundedChannel,
 };
