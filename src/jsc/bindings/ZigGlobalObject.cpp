@@ -2346,6 +2346,13 @@ JSC_DEFINE_HOST_FUNCTION(functionNavigatorGetLanguage, (JSC::JSGlobalObject * gl
     return JSValue::encode(defaultGlobalObject(globalObject)->navigatorLanguages()->getDirectIndex(globalObject, 0));
 }
 
+JSC_DEFINE_HOST_FUNCTION(functionNavigatorGetLocks, (JSC::JSGlobalObject * globalObject, JSC::CallFrame* callFrame))
+{
+    if (throwUnlessNavigator(globalObject, callFrame))
+        return {};
+    return JSValue::encode(BUN_REQUIRE_INTERNAL_MODULE(defaultGlobalObject(globalObject), InternalLocks, "node:worker_threads", "locks"_s));
+}
+
 JSC_DEFINE_HOST_FUNCTION(functionNavigatorGetHardwareConcurrency, (JSC::JSGlobalObject * globalObject, JSC::CallFrame* callFrame))
 {
     if (throwUnlessNavigator(globalObject, callFrame))
@@ -3146,6 +3153,7 @@ void GlobalObject::finishCreation(VM& vm)
              prototype->putDirectNativeIntrinsicGetter(vm, globalObject, JSC::Identifier::fromString(vm, "hardwareConcurrency"_s), functionNavigatorGetHardwareConcurrency, JSC::NoIntrinsic, accessorAttributes);
              prototype->putDirectNativeIntrinsicGetter(vm, globalObject, JSC::Identifier::fromString(vm, "language"_s), functionNavigatorGetLanguage, JSC::NoIntrinsic, accessorAttributes);
              prototype->putDirectNativeIntrinsicGetter(vm, globalObject, JSC::Identifier::fromString(vm, "languages"_s), functionNavigatorGetLanguages, JSC::NoIntrinsic, accessorAttributes);
+             prototype->putDirectNativeIntrinsicGetter(vm, globalObject, JSC::Identifier::fromString(vm, "locks"_s), functionNavigatorGetLocks, JSC::NoIntrinsic, accessorAttributes);
              prototype->putDirect(vm, vm.propertyNames->toStringTagSymbol,
                  jsNontrivialString(vm, "Navigator"_s), PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly);
 

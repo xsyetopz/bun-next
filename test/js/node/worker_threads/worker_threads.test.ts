@@ -3375,6 +3375,13 @@ test("the worker_threads diagnostics channel publishes each new Worker", async (
 describe("worker_threads.locks", () => {
   const { locks } = wt;
 
+  test("is navigator.locks", () => {
+    expect({ same: navigator.locks === locks, tag: String(navigator.locks) }).toEqual({
+      same: true,
+      tag: "[object LockManager]",
+    });
+  });
+
   test("grants in request order and reports held and pending locks", async () => {
     const order: string[] = [];
     const { promise: hold, resolve: releaseFirst } = Promise.withResolvers<void>();
@@ -3458,6 +3465,7 @@ describe("worker_threads.locks", () => {
   test("locks are shared with workers and released when a worker terminates", async () => {
     const worker = new Worker(
       `const { locks, parentPort } = require("worker_threads");
+       parentPort.on("message", () => {});
        locks.request("shared-with-worker", () => {
          parentPort.postMessage("held");
          return new Promise(() => {});

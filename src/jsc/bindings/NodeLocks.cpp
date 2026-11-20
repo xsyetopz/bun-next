@@ -109,12 +109,17 @@ void settleWebLock(ScriptExecutionContext& context, uint64_t id, bool granted)
 }
 
 // Runs without the lock: a grant whose context is gone is released, which can grant other requests.
-void deliverWebLockNotifications(Vector<WebLockNotification>&& notifications)
+// As in node, the calling context settles its own requests before returning, so a steal rejects the victim at once.
+void deliverWebLockNotifications(Vector<WebLockNotification>&& notifications, ScriptExecutionContext* current = nullptr)
 {
     auto& s = webLockState();
     while (!notifications.isEmpty()) {
         Vector<uint64_t> undelivered;
         for (auto& notification : notifications) {
+            if (current && notification.context == current->identifier()) {
+                settleWebLock(*current, notification.id, notification.granted);
+                continue;
+            }
             bool posted = ScriptExecutionContext::postTaskTo(notification.context, BunLoopKind::Regular, [id = notification.id, granted = notification.granted](ScriptExecutionContext& context) {
                 settleWebLock(context, id, granted);
             });
@@ -130,9 +135,9 @@ void deliverWebLockNotifications(Vector<WebLockNotification>&& notifications)
     }
 }
 
-ScriptExecutionContextIdentifier webLockContextOf(JSGlobalObject* globalObject)
+ScriptExecutionContext& webLockContextOf(JSGlobalObject* globalObject)
 {
-    return defaultGlobalObject(globalObject)->scriptExecutionContext()->identifier();
+    return *defaultGlobalObject(globalObject)->scriptExecutionContext();
 }
 
 }
@@ -156,7 +161,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionLocksRequest, (JSGlobalObject * globalObject,
     {
         Locker locker { s.lock };
         id = s.nextId++;
-        WebLockEntry request { id, name.isolatedCopy(), clientId.isolatedCopy(), webLockContextOf(globalObject), exclusive, steal };
+        WebLockEntry request { id, name.isolatedCopy(), clientId.isolatedCopy(), webLockContextOf(globalObject).identifier(), exclusive, steal };
         if (steal) {
             s.pending.insert(0, WTF::move(request));
         } else {
@@ -170,7 +175,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionLocksRequest, (JSGlobalObject * globalObject,
     }
     // As in node, a request granted at once runs its callback before request() returns.
     bool grantedNow = notifications.removeFirstMatching([&](const WebLockNotification& notification) { return notification.id == id && notification.granted; });
-    deliverWebLockNotifications(WTF::move(notifications));
+    deliverWebLockNotifications(WTF::move(notifications), &webLockContextOf(globalObject));
     return JSValue::encode(jsNumber(grantedNow ? -static_cast<double>(id) : static_cast<double>(id)));
 }
 
@@ -185,7 +190,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionLocksRelease, (JSGlobalObject * globalObject,
             return JSValue::encode(jsUndefined());
         processWebLockQueue(s, notifications);
     }
-    deliverWebLockNotifications(WTF::move(notifications));
+    deliverWebLockNotifications(WTF::move(notifications), &webLockContextOf(globalObject));
     return JSValue::encode(jsUndefined());
 }
 
@@ -201,7 +206,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionLocksAbort, (JSGlobalObject * globalObject, C
             return JSValue::encode(jsBoolean(false));
         processWebLockQueue(s, notifications);
     }
-    deliverWebLockNotifications(WTF::move(notifications));
+    deliverWebLockNotifications(WTF::move(notifications), &webLockContextOf(globalObject));
     return JSValue::encode(jsBoolean(true));
 }
 
@@ -210,7 +215,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionLocksQuery, (JSGlobalObject * globalObject, C
 {
     auto& vm = globalObject->vm();
     auto scope = DECLARE_THROW_SCOPE(vm);
-    auto context = webLockContextOf(globalObject);
+    auto context = webLockContextOf(globalObject).identifier();
     Vector<WebLockEntry> held;
     Vector<WebLockEntry> pending;
     {

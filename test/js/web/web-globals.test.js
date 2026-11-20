@@ -550,7 +550,7 @@ test("navigator is the one instance of the global Navigator class", () => {
       { name: "TypeError", code: "ERR_ILLEGAL_CONSTRUCTOR", message: "Illegal constructor" },
       { name: "TypeError", code: "ERR_ILLEGAL_CONSTRUCTOR", message: "Illegal constructor" },
     ],
-    readOffInstance: ["TypeError", "TypeError", "TypeError", "TypeError", "TypeError"],
+    readOffInstance: ["TypeError", "TypeError", "TypeError", "TypeError", "TypeError", "TypeError"],
   });
 });
 
