@@ -5,6 +5,7 @@ import {
   formatsStackCell,
   framesOfModuleGraphsCell,
   functionOfTimersPromisesCell,
+  quotaExceededErrorCell,
   moduleGraphsCell,
   overriddenMainCell,
   performanceTimingCell,
@@ -1935,6 +1936,23 @@ export default b.declarations(
   b.method("AbortSignal.prototype.onabort", eventHandlerAttributeKeptIn("AbortSignal.onabort", receiver)),
   b.static("onerror", b.property(b.any, { setter: eventHandlerAttribute(globalObject).setter })),
   b.static("onmessage", b.property(b.any, { setter: eventHandlerAttribute(globalObject).setter })),
+  // ZigGlobalObject.cpp: the first read loads internal/domexception and replaces the accessor with a data property.
+  b.static("QuotaExceededError", {
+    this: b.any,
+    getter: b.any,
+    capability: "js",
+    throws: true,
+    uses: { this: [b.returnedFrom(quotaExceededErrorCell)] },
+    implementation: b.generic,
+  }),
+  b.extend("QuotaExceededError", {
+    loads: [
+      {
+        module: "internal/domexception",
+        exports: [b.exportRead("QuotaExceededError", b.keptIn(quotaExceededErrorCell))],
+      },
+    ],
+  }),
   b.fn("addEventListener", listenerRegistration(globalObject)),
   b.fn("removeEventListener", listenerRemoval),
   // Whatever it is called on, the target is the global object.

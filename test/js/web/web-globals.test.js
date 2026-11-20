@@ -813,3 +813,54 @@ test("dispatchEvent skips a listener that is a WebAssembly GC object", () => {
   target.dispatchEvent(new Event("a"));
   expect(calls).toBe(1);
 });
+
+describe("QuotaExceededError", () => {
+  test("is a non-enumerable global subclass of DOMException", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "QuotaExceededError");
+    expect(descriptor).toMatchObject({ enumerable: false, writable: true, configurable: true });
+    expect(Object.keys(globalThis)).not.toContain("QuotaExceededError");
+    expect(Object.getPrototypeOf(QuotaExceededError)).toBe(DOMException);
+    expect(Object.keys(QuotaExceededError.prototype)).toEqual(["quota", "requested"]);
+  });
+
+  test("takes a quota and a requested amount", () => {
+    const error = new QuotaExceededError("too much", { quota: 1, requested: 2 });
+    expect(error).toBeInstanceOf(DOMException);
+    expect(error).toMatchObject({
+      message: "too much",
+      name: "QuotaExceededError",
+      code: 22,
+      quota: 1,
+      requested: 2,
+    });
+    expect(Object.prototype.toString.call(error)).toBe("[object QuotaExceededError]");
+    expect(new QuotaExceededError()).toMatchObject({ message: "", quota: null, requested: null });
+  });
+
+  test("validates its options", () => {
+    expect(() => new QuotaExceededError("", { quota: NaN })).toThrow(
+      new TypeError("Cannot convert options.quota to a double: the value is NaN"),
+    );
+    expect(() => new QuotaExceededError("", { requested: Infinity })).toThrow(
+      new TypeError("Cannot convert options.requested to a double: the value is Infinity"),
+    );
+    expect(() => new QuotaExceededError("", { quota: -1 })).toThrow(
+      new RangeError("options.quota must not be negative"),
+    );
+    expect(() => new QuotaExceededError("", { quota: 5, requested: 2 })).toThrow(
+      new RangeError("options.requested must not be less than options.quota"),
+    );
+    expect(() => QuotaExceededError.prototype.quota).toThrow(expect.objectContaining({ code: "ERR_INVALID_THIS" }));
+  });
+
+  test("is what crypto.getRandomValues throws", () => {
+    let error;
+    try {
+      crypto.getRandomValues(new Uint8Array(65537));
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeInstanceOf(QuotaExceededError);
+    expect(error).toMatchObject({ name: "QuotaExceededError", code: 22, quota: null, requested: null });
+  });
+});

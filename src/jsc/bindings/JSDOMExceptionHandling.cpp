@@ -22,6 +22,8 @@
 #include "root.h"
 
 #include "ErrorCode.h"
+#include "InternalModuleRegistry.h"
+#include "ZigGlobalObject.h"
 
 #include "DOMException.h"
 #include "JSDOMException.h"
@@ -120,6 +122,25 @@ JSValue createDOMExceptionObject(JSGlobalObject* lexicalGlobalObject, ExceptionC
     return errorObject;
 }
 
+// https://webidl.spec.whatwg.org/#quotaexceedederror is a subclass of DOMException, written in JavaScript.
+static JSValue createQuotaExceededError(JSGlobalObject* lexicalGlobalObject, const String& message)
+{
+    auto& vm = JSC::getVM(lexicalGlobalObject);
+    auto scope = DECLARE_TOP_EXCEPTION_SCOPE(vm);
+    auto* globalObject = defaultGlobalObject(lexicalGlobalObject);
+    JSValue constructor = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalDomexception, "QuotaExceededError", "QuotaExceededError"_s);
+    JSValue error;
+    if (!scope.exception()) {
+        MarkedArgumentBuffer args;
+        args.append(jsString(vm, message));
+        error = JSC::construct(globalObject, constructor, args, "QuotaExceededError is not a constructor"_s);
+    }
+    // Callers take a value, not an exception: only running out of memory gets here.
+    if (scope.exception() && scope.tryClearException())
+        return createDOMExceptionObject(lexicalGlobalObject, ExceptionCode::QuotaExceededError, message);
+    return error;
+}
+
 JSValue createDOMException(JSGlobalObject* lexicalGlobalObject, ExceptionCode ec, const String& message, const String& extra)
 {
     auto& vm = JSC::getVM(lexicalGlobalObject);
@@ -173,6 +194,9 @@ JSValue createDOMException(JSGlobalObject* lexicalGlobalObject, ExceptionCode ec
             Bun::putDirectNamed(vm, error, "base"_s, JSC::jsString(vm, extra));
         return error;
     }
+
+    case ExceptionCode::QuotaExceededError:
+        return createQuotaExceededError(lexicalGlobalObject, message);
 
     case ExceptionCode::CryptoOperationFailedError:
         return Bun::createError(lexicalGlobalObject, Bun::ErrorCode::ERR_CRYPTO_OPERATION_FAILED, message.isEmpty() ? "Crypto operation failed"_s : message);

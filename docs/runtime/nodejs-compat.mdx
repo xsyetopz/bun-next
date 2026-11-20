@@ -387,7 +387,7 @@ The following list covers the globals implemented by Node.js and Bun's compatibi
 
 ### [`QuotaExceededError`](https://developer.mozilla.org/en-US/docs/Web/API/QuotaExceededError)
 
-🔴 Not implemented. `crypto.getRandomValues()` throws a `DOMException` named `QuotaExceededError` for views over 65,536 bytes, but the global class and its `quota` and `requested` properties are missing.
+🟡 Implemented. `structuredClone()` and `postMessage()` give a plain `DOMException` without `quota` and `requested`.
 
 ### [`ReadableByteStreamController`](https://developer.mozilla.org/en-US/docs/Web/API/ReadableByteStreamController)
 

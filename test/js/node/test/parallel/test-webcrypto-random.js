@@ -65,8 +65,6 @@ for (const ctor of intTypedConstructors) {
     // Ignore if error here.
   }
 
-  // Diverges from upstream: there is no QuotaExceededError global yet, so the
-  // error is a DOMException named QuotaExceededError without `quota` and `requested`.
   if (kData !== undefined) {
     assert.throws(
       () => crypto.getRandomValues(kData),
@@ -74,9 +72,9 @@ for (const ctor of intTypedConstructors) {
         assert.strictEqual(err.name, 'QuotaExceededError');
         assert.strictEqual(err.code, 22);
         assert(err instanceof DOMException);
-        // assert(err instanceof QuotaExceededError);
-        // assert.strictEqual(err.quota, null);
-        // assert.strictEqual(err.requested, null);
+        assert(err instanceof QuotaExceededError);
+        assert.strictEqual(err.quota, null);
+        assert.strictEqual(err.requested, null);
         return true;
       },
     );

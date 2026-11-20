@@ -3622,6 +3622,24 @@ JSValue GlobalObject_getGlobalThis(VM& vm, JSObject* globalObject)
     return uncheckedDowncast<Zig::GlobalObject>(globalObject)->globalThis();
 }
 
+// Not on the lookup table: JSC reads a PropertyCallback while it links code, when no JavaScript may run, and the class is JavaScript.
+JSC_DEFINE_CUSTOM_GETTER(jsQuotaExceededError, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue thisValue, PropertyName property))
+{
+    auto& vm = JSC::getVM(lexicalGlobalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    auto* globalObject = defaultGlobalObject(lexicalGlobalObject);
+    JSValue constructor = BUN_REQUIRE_INTERNAL_MODULE(globalObject, InternalDomexception, "QuotaExceededError", "QuotaExceededError"_s);
+    RETURN_IF_EXCEPTION(scope, {});
+    globalObject->putDirect(vm, property, constructor, static_cast<unsigned>(PropertyAttribute::DontEnum));
+    return JSValue::encode(constructor);
+}
+
+JSC_DEFINE_CUSTOM_SETTER(setJsQuotaExceededError, (JSGlobalObject * lexicalGlobalObject, EncodedJSValue thisValue, EncodedJSValue value, PropertyName property))
+{
+    defaultGlobalObject(lexicalGlobalObject)->putDirect(JSC::getVM(lexicalGlobalObject), property, JSValue::decode(value), static_cast<unsigned>(PropertyAttribute::DontEnum));
+    return true;
+}
+
 // `@natives`. Builtins in src/js read Blob, URL, ... (nativeGlobals in src/codegen/replacements.ts) from here, since user code can patch globalThis.
 class NativeGlobals final : public JSC::JSNonFinalObject {
 public:
@@ -3783,6 +3801,7 @@ void GlobalObject::addBuiltinGlobals(JSC::VM& vm)
     // TODO: this should be usable on the lookup table. it crashed las time i tried it
     putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "onmessage"_s), JSC::CustomGetterSetter::create(vm, globalOnMessage, setGlobalOnMessage), 0);
     putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "onerror"_s), JSC::CustomGetterSetter::create(vm, globalOnError, setGlobalOnError), 0);
+    putDirectCustomAccessor(vm, JSC::Identifier::fromString(vm, "QuotaExceededError"_s), JSC::CustomGetterSetter::create(vm, jsQuotaExceededError, setJsQuotaExceededError), PropertyAttribute::DontEnum | PropertyAttribute::CustomValue);
 
     // ----- Extensions to Built-in objects -----
 

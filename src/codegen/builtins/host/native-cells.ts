@@ -2,6 +2,7 @@ export const timerCallbackCell = "Timeout.callback";
 export const timerArgumentsCell = "Timeout.arguments";
 export const timerFieldsCell = "Timeout.fields";
 export const functionOfTimersPromisesCell = (timer: string) => `TimersPromises.${timer}`;
+export const quotaExceededErrorCell = "GlobalObject.QuotaExceededError";
 export const serverOptionsCell = "Server.options";
 export const requestHandlerCell = "Server.fetch";
 export const socketOptionsCell = "Socket.options";
