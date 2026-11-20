@@ -1,4 +1,4 @@
-import { Buffer, SlowBuffer, isAscii, isUtf8, kMaxLength } from "buffer";
+import { Buffer, SlowBuffer, isAscii, isLatin1, isUtf8, kMaxLength } from "buffer";
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { bunEnv, bunExe, gc, isASAN, isDebug, nodeExe, tempDir, withoutAggressiveGC } from "harness";
 import { createHash } from "node:crypto";
@@ -213,6 +213,22 @@ for (let withOverridenBufferWrite of [false, true]) {
         expect(isAscii(new Buffer("").buffer)).toBeTrue();
         expect(isUtf8(new Buffer("What did the 🦊 say?").buffer)).toBeTrue();
         expect(isUtf8(new Buffer([129, 129, 129]).buffer)).toBeFalse();
+      });
+
+      it("isLatin1", () => {
+        // "Āé".slice(1) is a 16-bit string whose only code unit is Latin-1.
+        const inputs = ["", "abc", "\u0080", "ÿ", "€", "Ā", "🦊", "Āé".slice(1)];
+        expect(inputs.map(input => isLatin1(input))).toEqual([true, true, true, true, false, false, false, true]);
+        expect({ name: isLatin1.name, length: isLatin1.length }).toEqual({ name: "isLatin1", length: 1 });
+        for (const input of [undefined, 1, Buffer.from("a"), new String("a")]) {
+          expect(() => isLatin1(input)).toThrow(
+            expect.objectContaining({
+              name: "TypeError",
+              code: "ERR_INVALID_ARG_TYPE",
+              message: expect.stringContaining('The "input" argument must be of type string. Received '),
+            }),
+          );
+        }
       });
 
       // https://github.com/oven-sh/bun/issues/2052

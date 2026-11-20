@@ -21,7 +21,7 @@ node:_tls_wrap Server TLSSocket connect createServer default
 node:assert=function Assert AssertionError CallTracker deepEqual deepStrictEqual default doesNotMatch doesNotReject doesNotThrow equal fail ifError match notDeepEqual notDeepStrictEqual notEqual notStrictEqual ok partialDeepStrictEqual rejects strict strictEqual throws
 node:assert/strict=function Assert AssertionError CallTracker deepEqual deepStrictEqual default doesNotMatch doesNotReject doesNotThrow equal fail ifError match notDeepEqual notDeepStrictEqual notEqual notStrictEqual ok partialDeepStrictEqual rejects strict strictEqual throws
 node:async_hooks AsyncLocalStorage AsyncResource asyncWrapProviders createHook default executionAsyncId executionAsyncResource triggerAsyncId
-node:buffer Blob Buffer File INSPECT_MAX_BYTES SlowBuffer atob btoa constants default isAscii isUtf8 kMaxLength kStringMaxLength resolveObjectURL transcode
+node:buffer Blob Buffer File INSPECT_MAX_BYTES SlowBuffer atob btoa constants default isAscii isLatin1 isUtf8 kMaxLength kStringMaxLength resolveObjectURL transcode
 node:child_process ChildProcess default exec execFile execFileSync execSync fork spawn spawnSync
 node:cluster SCHED_NONE SCHED_RR Worker _events _eventsCount _maxListeners default disconnect fork isMaster isPrimary isWorker schedulingPolicy settings setupMaster setupPrimary workers
 node:console Console assert clear count countReset debug default dir dirxml error group groupCollapsed groupEnd info log profile profileEnd record recordEnd screenshot table takeHeapSnapshot time timeEnd timeLog timeStamp trace warn write

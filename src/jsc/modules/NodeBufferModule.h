@@ -125,6 +125,22 @@ JSC_DEFINE_HOST_FUNCTION(jsBufferConstructorFunction_isAscii,
         JSValue::encode(jsBoolean(simdutf::validate_ascii(ptr, byteLength))));
 }
 
+JSC_DEFINE_HOST_FUNCTION(jsBufferConstructorFunction_isLatin1,
+    (JSC::JSGlobalObject * lexicalGlobalObject,
+        JSC::CallFrame* callframe))
+{
+    auto throwScope = DECLARE_THROW_SCOPE(lexicalGlobalObject->vm());
+
+    auto input = callframe->argument(0);
+    Bun::V::validateString(throwScope, lexicalGlobalObject, input, "input"_s);
+    RETURN_IF_EXCEPTION(throwScope, {});
+
+    auto string = asString(input)->value(lexicalGlobalObject);
+    RETURN_IF_EXCEPTION(throwScope, {});
+
+    return JSValue::encode(jsBoolean(string->containsOnlyLatin1()));
+}
+
 BUN_DECLARE_HOST_FUNCTION(jsBufferTranscode);
 
 JSC_DEFINE_CUSTOM_GETTER(jsGetter_INSPECT_MAX_BYTES, (JSGlobalObject * lexicalGlobalObject, JSC::EncodedJSValue thisValue, PropertyName propertyName))
@@ -205,6 +221,8 @@ DEFINE_NATIVE_MODULE(NodeBuffer)
     put(JSC::Identifier::fromString(vm, "isAscii"_s), JSC::JSFunction::create(vm, globalObject, 1, "isAscii"_s, jsBufferConstructorFunction_isAscii, ImplementationVisibility::Public, NoIntrinsic));
 
     put(JSC::Identifier::fromString(vm, "isUtf8"_s), JSC::JSFunction::create(vm, globalObject, 1, "isUtf8"_s, jsBufferConstructorFunction_isUtf8, ImplementationVisibility::Public, NoIntrinsic));
+
+    put(JSC::Identifier::fromString(vm, "isLatin1"_s), JSC::JSFunction::create(vm, globalObject, 1, "isLatin1"_s, jsBufferConstructorFunction_isLatin1, ImplementationVisibility::Public, NoIntrinsic));
 }
 
 } // namespace Zig
