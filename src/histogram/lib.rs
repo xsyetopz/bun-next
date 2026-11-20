@@ -138,24 +138,31 @@ impl Histogram {
     }
 
     fn record_n(&mut self, value: u64, n: u64) -> bool {
-        if value <= self.highest_trackable_value
-            && let Some(count) = self.count.checked_add(n)
-        {
-            let index = self.index_of(value);
-            if !matches!(self.chunks.get(index / CHUNK_LEN), Some(Some(_))) {
-                self.add_chunk(index / CHUNK_LEN);
-            }
-            if let Some(Some(chunk)) = self.chunks.get_mut(index / CHUNK_LEN)
-                && let Some(slot) = chunk.get_mut(index % CHUNK_LEN)
-            {
-                *slot += n;
-                self.count = count;
-                self.first = self.first.min(index);
-                self.last = self.last.max(index);
-                return true;
-            }
+        if value <= self.highest_trackable_value && self.add_at(self.index_of(value), n) {
+            return true;
         }
         self.exceeds = self.exceeds.saturating_add(n);
+        false
+    }
+
+    /// Whether `n` was added to the slot at `index`, which can be past that of the highest trackable value. It is not if
+    /// the count would overflow.
+    fn add_at(&mut self, index: usize, n: u64) -> bool {
+        let Some(count) = self.count.checked_add(n) else {
+            return false;
+        };
+        if !matches!(self.chunks.get(index / CHUNK_LEN), Some(Some(_))) {
+            self.add_chunk(index / CHUNK_LEN);
+        }
+        if let Some(Some(chunk)) = self.chunks.get_mut(index / CHUNK_LEN)
+            && let Some(slot) = chunk.get_mut(index % CHUNK_LEN)
+        {
+            *slot += n;
+            self.count = count;
+            self.first = self.first.min(index);
+            self.last = self.last.max(index);
+            return true;
+        }
         false
     }
 
@@ -165,6 +172,9 @@ impl Histogram {
         if self.chunks.is_empty() {
             let last_slot = self.index_of(self.highest_trackable_value);
             self.chunks = vec![None; last_slot / CHUNK_LEN + 1];
+        }
+        if self.chunks.len() <= index {
+            self.chunks.resize(index + 1, None);
         }
         if let Some(chunk) = self.chunks.get_mut(index) {
             *chunk = Some(Box::new([0; CHUNK_LEN]));

@@ -4,7 +4,7 @@ import { describe, test } from "node:test";
 import { inspect } from "node:util";
 import { serialize } from "node:v8";
 import { MessageChannel, Worker } from "node:worker_threads";
-import { createHistogram, createSlidingWindowHistogram, monitorEventLoopDelay } from "perf_hooks";
+import { createHistogram, createSlidingWindowHistogram, importHistogram, monitorEventLoopDelay } from "perf_hooks";
 
 // This file also runs under Node.js (`node --test`), which is where the expected values come from.
 // Node.js v26.13.1 fails the tests that are marked with this.
@@ -1878,6 +1878,25 @@ describe("Histogram", () => {
       const ratio = [0xfb, 0x3f, 0xf0, 0, 0, 0, 0, 0, 0];
       const expected = [0xab, 0, 2, 1, 1, 2, 0x18, 100, 3, 1, 4, 3, 5, 5, 6, 8, 7, 0, 8, ...ratio, 9, 0x18, 64];
       assert.deepStrictEqual([...h.export()], [...expected, 10, 0x84, 5, 2, 3, 1]);
+    });
+
+    test("importHistogram restores what export() wrote", () => {
+      const h = createHistogram({ lowest: 2, highest: 1e9, figures: 2, halfLife: 3, threshold: 10 });
+      [2, 3, 4096, 4097, 123456789].forEach(value => h.record(value));
+      const state = (x: typeof h) => {
+        const { count, min, max, mean, stddev, exceeds, ewmaMean, ewmaStddev, ewmaErrorRate } = x;
+        return { count, min, max, mean, stddev, exceeds, ewmaMean, ewmaStddev, ewmaErrorRate, p: x.percentiles };
+      };
+      const data = h.export();
+      assert.ok(data instanceof Uint8Array);
+      assert.deepStrictEqual(state(importHistogram(data)), state(h));
+      assert.deepStrictEqual(
+        [() => importHistogram([1] as any), () => importHistogram(new Uint8Array([0xa0, 0]).subarray(1))].map(thrown),
+        [
+          'TypeError ERR_INVALID_ARG_TYPE: The "data" argument must be an instance of Uint8Array. Received an instance of Array',
+          "TypeError ERR_INVALID_ARG_VALUE: Invalid histogram export data",
+        ],
+      );
     });
 
     test("a receiver of another class", () => {

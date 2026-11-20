@@ -14,10 +14,12 @@ const {
   validateNumber,
   validateObject,
 } = require("internal/validators");
+const { isUint8Array } = require("node:util/types");
 
 const createRecordable = $bindgen("histogram.bind.ts", "createRecordable");
 const createInterval = $bindgen("histogram.bind.ts", "createInterval");
 const createSlidingWindow = $bindgen("histogram.bind.ts", "createSlidingWindow");
+const importRecordable = $bindgen("histogram.bind.ts", "importHistogram");
 const isHistogram = $bindgen("histogram.bind.ts", "isHistogram");
 
 const NumberMAX_SAFE_INTEGER = Number.MAX_SAFE_INTEGER;
@@ -414,6 +416,11 @@ export default {
     }
 
     return createSlidingWindow(lowest, highest, figures, chunks, timeBased, rotateAt);
+  },
+  // https://github.com/nodejs/node/blob/v26.13.1/lib/internal/histogram.js#L1029
+  importHistogram: function importHistogram(data: Uint8Array) {
+    if (!isUint8Array(data)) throw $ERR_INVALID_ARG_TYPE("data", ["Uint8Array"], data);
+    return importRecordable(data);
   },
   PerformanceResourceTiming,
 };

@@ -226,4 +226,13 @@ export const createSlidingWindow = b.fn({
   capability: "heap",
   throws: true,
 });
+
+/** Throws unless `data` is what `export()` wrote. */
+export const importHistogram = b.fn({
+  args: { data: b.bytes({ from: ["buffer"] }) },
+  returns: RecordableHistogram,
+  capability: "heap",
+  throws: true,
+});
+
 export const isHistogram = b.fn({ args: { value: b.any }, returns: b.bool });

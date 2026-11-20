@@ -294,6 +294,26 @@ fn new_histogram<'a>(
     })
 }
 
+pub(crate) fn import_histogram<'a>(
+    heap: &JsHeap<'a>,
+    data: &[u8],
+) -> bindgen::Result<'a, JsWrapper<'a, Histogram>> {
+    let Some((histogram, ewma)) = bun_histogram::Histogram::import(data) else {
+        // https://github.com/nodejs/node/blob/v26.13.1/src/histogram.cc#L3216
+        return Err(heap.error_with_code(
+            ErrorCode::INVALID_ARG_VALUE,
+            format_args!("Invalid histogram export data"),
+        ));
+    };
+    let (state, size) = new_state(histogram, ewma);
+    let histogram = Histogram {
+        counts: RefCell::new(Counts::Own(state)),
+        size,
+        interval: None,
+    };
+    Ok(js_RecordableHistogram::create(heap, histogram))
+}
+
 pub(crate) fn is_histogram(value: JsLocal<'_>) -> bool {
     value.to_js().is::<Histogram>()
 }

@@ -59,6 +59,17 @@ impl Ewma {
         }
     }
 
+    /// Continues from the averages of values recorded before.
+    pub(crate) fn restore(&mut self, mean: f64, variance: f64, error_rate: f64) {
+        *self = Self {
+            started: true,
+            mean,
+            variance,
+            error_rate,
+            ..*self
+        };
+    }
+
     /// Forgets the values, and keeps the half-life and the threshold.
     pub fn reset(&mut self) {
         *self = Self {
