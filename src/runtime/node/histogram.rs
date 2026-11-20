@@ -183,8 +183,8 @@ pub(crate) fn create_recordable<'a>(
     figures: u32,
     half_life: f64,
     threshold: f64,
-) -> Option<JsWrapper<'a, Histogram>> {
-    let histogram = bun_histogram::Histogram::new(lowest, highest, figures)?;
+) -> bindgen::Result<'a, JsWrapper<'a, Histogram>> {
+    let histogram = new_histogram(heap, lowest, highest, figures)?;
     // `as` saturates.
     let ewma = bun_histogram::Ewma::new(half_life, threshold as i64);
     let (state, size) = new_state(histogram, ewma);
@@ -193,13 +193,18 @@ pub(crate) fn create_recordable<'a>(
         size,
         interval: None,
     };
-    Some(js_RecordableHistogram::create(heap, histogram))
+    Ok(js_RecordableHistogram::create(heap, histogram))
 }
 
-pub(crate) fn create_interval<'a>(heap: &JsHeap<'a>, resolution: f64) -> JsWrapper<'a, Histogram> {
-    // https://github.com/nodejs/node/blob/v26.3.0/src/node_perf.cc#L298
-    let histogram = bun_histogram::Histogram::new(1000, i64::MAX as u64, 3);
-    let (state, size) = new_state(histogram.expect("a valid range"), Default::default());
+pub(crate) fn create_interval<'a>(
+    heap: &JsHeap<'a>,
+    resolution: f64,
+    lowest: u64,
+    highest: u64,
+    figures: u32,
+) -> bindgen::Result<'a, JsWrapper<'a, Histogram>> {
+    let histogram = new_histogram(heap, lowest, highest, figures)?;
+    let (state, size) = new_state(histogram, Default::default());
     let state = Arc::new(Guarded::new(state));
     let interval = Rc::new(Interval {
         state: Arc::clone(&state),
@@ -212,7 +217,23 @@ pub(crate) fn create_interval<'a>(heap: &JsHeap<'a>, resolution: f64) -> JsWrapp
         size,
         interval: Some((interval, Cell::new(false))),
     };
-    js_ELDHistogram::create(heap, histogram)
+    Ok(js_ELDHistogram::create(heap, histogram))
+}
+
+/// Node.js validates the options in JavaScript, but the precision still limits how large `lowest` can be.
+fn new_histogram<'a>(
+    heap: &JsHeap<'a>,
+    lowest: u64,
+    highest: u64,
+    figures: u32,
+) -> bindgen::Result<'a, bun_histogram::Histogram> {
+    bun_histogram::Histogram::new(lowest, highest, figures).ok_or_else(|| {
+        // https://github.com/nodejs/node/blob/v26.13.1/src/histogram.cc#L2279
+        heap.error_with_code(
+            ErrorCode::INVALID_ARG_VALUE,
+            format_args!("Invalid histogram options"),
+        )
+    })
 }
 
 pub(crate) fn is_histogram(value: JsLocal<'_>) -> bool {

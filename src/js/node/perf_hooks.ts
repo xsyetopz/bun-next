@@ -293,6 +293,25 @@ Object.defineProperties(Performance.prototype, {
   },
 });
 
+// https://github.com/nodejs/node/blob/v26.13.1/lib/internal/histogram.js#L916
+function validateHistogramOptions(lowest: number | bigint, highest: number | bigint, figures: number) {
+  if (typeof lowest !== "bigint") {
+    validateInteger(lowest, "options.lowest", 1, NumberMAX_SAFE_INTEGER);
+  } else if (lowest < 1n || lowest > kInt64Max) {
+    throw $ERR_OUT_OF_RANGE("options.lowest", `>= 1n && <= ${kInt64Max}n`, lowest);
+  }
+  if (typeof highest !== "bigint") {
+    validateInteger(highest, "options.highest", 1, NumberMAX_SAFE_INTEGER);
+  } else if (highest < 1n || highest > kInt64Max) {
+    throw $ERR_OUT_OF_RANGE("options.highest", `>= 1n && <= ${kInt64Max}n`, highest);
+  }
+  const minimumHighest = 2n * BigInt(lowest);
+  if (BigInt(highest) < minimumHighest) {
+    throw $ERR_OUT_OF_RANGE("options.highest", `>= 2 * options.lowest (${minimumHighest}n)`, highest);
+  }
+  validateInteger(figures, "options.figures", 1, 5);
+}
+
 export default {
   timerify,
   performance,
@@ -305,16 +324,26 @@ export default {
   PerformanceObserverEntryList,
   PerformanceNodeTiming,
   eventLoopUtilization,
-  // https://github.com/nodejs/node/blob/v26.3.0/lib/internal/perf/event_loop_delay.js#L81
-  monitorEventLoopDelay: function monitorEventLoopDelay(options: { resolution?: number } = kEmptyObject) {
+  // https://github.com/nodejs/node/blob/v26.13.1/lib/internal/perf/event_loop_delay.js#L98
+  monitorEventLoopDelay: function monitorEventLoopDelay(
+    options: {
+      resolution?: number;
+      lowest?: number | bigint;
+      highest?: number | bigint;
+      figures?: number;
+    } = kEmptyObject,
+  ) {
     validateObject(options, "options");
 
     const { resolution = 10 } = options;
     validateInteger(resolution, "options.resolution", 1);
 
-    return createInterval(resolution);
+    const { lowest = 1000, highest = kInt64Max, figures = 3 } = options;
+    validateHistogramOptions(lowest, highest, figures);
+
+    return createInterval(resolution, lowest, highest, figures);
   },
-  // https://github.com/nodejs/node/blob/v26.3.0/lib/internal/histogram.js#L367
+  // https://github.com/nodejs/node/blob/v26.13.1/lib/internal/histogram.js#L952
   createHistogram: function createHistogram(
     options: {
       lowest?: number | bigint;
@@ -326,29 +355,13 @@ export default {
   ) {
     validateObject(options, "options");
     const { lowest = 1, highest = NumberMAX_SAFE_INTEGER, figures = 3, halfLife = 0, threshold = 0 } = options;
-    if (typeof lowest !== "bigint") {
-      validateInteger(lowest, "options.lowest", 1, NumberMAX_SAFE_INTEGER);
-    } else if (lowest < 1n || lowest > kInt64Max) {
-      throw $ERR_OUT_OF_RANGE("options.lowest", `>= 1n && <= ${kInt64Max}n`, lowest);
-    }
-    if (typeof highest !== "bigint") {
-      validateInteger(highest, "options.highest", 2 * Number(lowest), NumberMAX_SAFE_INTEGER);
-    } else if (highest < 2n * BigInt(lowest)) {
-      throw $ERR_INVALID_ARG_VALUE_RangeError("options.highest", highest);
-    } else if (highest > kInt64Max) {
-      throw $ERR_OUT_OF_RANGE("options.highest", `<= ${kInt64Max}n`, highest);
-    }
-    validateInteger(figures, "options.figures", 1, 5);
+    validateHistogramOptions(lowest, highest, figures);
     validateNumber(halfLife, "options.halfLife");
     if (halfLife < 0) throw $ERR_OUT_OF_RANGE("options.halfLife", ">= 0", halfLife);
     validateNumber(threshold, "options.threshold");
     if (threshold < 0) throw $ERR_OUT_OF_RANGE("options.threshold", ">= 0", threshold);
 
-    const histogram = createRecordable(lowest, highest, figures, halfLife, threshold);
-    if (histogram === null) {
-      throw $ERR_INVALID_ARG_VALUE("options.lowest", lowest, `is too large for ${figures} significant figures`);
-    }
-    return histogram;
+    return createRecordable(lowest, highest, figures, halfLife, threshold);
   },
   PerformanceResourceTiming,
 };

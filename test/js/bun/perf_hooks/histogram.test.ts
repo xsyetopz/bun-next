@@ -1730,13 +1730,13 @@ describe("Histogram", () => {
           'RangeError ERR_OUT_OF_RANGE: The value of "options.lowest" is out of range. It must be >= 1 && <= 9007199254740991. Received 0',
           'RangeError ERR_OUT_OF_RANGE: The value of "options.lowest" is out of range. It must be >= 1 && <= 9007199254740991. Received 9_007_199_254_740_992',
           'TypeError ERR_INVALID_ARG_TYPE: The "options.lowest" property must be of type number. Received an instance of Object',
-          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 2 && <= 9007199254740991. Received 1',
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 2 * options.lowest (2n). Received 1',
           'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be an integer. Received 1.5',
           'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be an integer. Received Infinity',
           'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be an integer. Received NaN',
-          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 2 && <= 9007199254740991. Received 9_007_199_254_740_992',
-          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 9007199254740992 && <= 9007199254740991. Received 9_007_199_254_740_991',
-          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 20 && <= 9007199254740991. Received 19',
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 1 && <= 9007199254740991. Received 9_007_199_254_740_992',
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 2 * options.lowest (9007199254740992n). Received 9_007_199_254_740_991',
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 2 * options.lowest (20n). Received 19',
           'RangeError ERR_OUT_OF_RANGE: The value of "options.figures" is out of range. It must be an integer. Received 2.5',
           'RangeError ERR_OUT_OF_RANGE: The value of "options.figures" is out of range. It must be >= 1 && <= 5. Received 0',
           'RangeError ERR_OUT_OF_RANGE: The value of "options.figures" is out of range. It must be >= 1 && <= 5. Received 6',
@@ -1746,7 +1746,7 @@ describe("Histogram", () => {
       );
       assert.strictEqual(
         thrown(() => createHistogram({ lowest: 10n, highest: 19n })),
-        "RangeError ERR_INVALID_ARG_VALUE: The property 'options.highest' is invalid. Received 19n",
+        'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 2 * options.lowest (20n). Received 19n',
       );
       assert.strictEqual(createHistogram(undefined).count, 0);
       assert.strictEqual(createHistogram({ lowest: 1n, highest: 2n ** 63n - 1n }).count, 0);
@@ -1754,7 +1754,7 @@ describe("Histogram", () => {
       assert.strictEqual(monitorEventLoopDelay.length, 0);
     });
 
-    test("createHistogram with a number and a BigInt", notInNode, () => {
+    test("createHistogram with a number and a BigInt", () => {
       for (const options of [
         { lowest: 1, highest: 10n },
         { lowest: 1n, highest: 10 },
@@ -1766,9 +1766,7 @@ describe("Histogram", () => {
       }
     });
 
-    // Node.js truncates a BigInt to 64 bits, aborts if what is left is not a valid range, and cannot compare a BigInt
-    // with a number.
-    test("createHistogram with a BigInt that is out of range", notInNode, () => {
+    test("createHistogram with a BigInt that is out of range", () => {
       assert.deepStrictEqual(
         [
           { lowest: 0n },
@@ -1782,11 +1780,11 @@ describe("Histogram", () => {
         [
           'RangeError ERR_OUT_OF_RANGE: The value of "options.lowest" is out of range. It must be >= 1n && <= 9223372036854775807n. Received 0n',
           'RangeError ERR_OUT_OF_RANGE: The value of "options.lowest" is out of range. It must be >= 1n && <= 9223372036854775807n. Received 9_223_372_036_854_775_808n',
-          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be <= 9223372036854775807n. Received 9_223_372_036_854_775_808n',
-          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be <= 9223372036854775807n. Received 18_446_744_073_709_551_626n',
-          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 20 && <= 9007199254740991. Received 19',
-          "RangeError ERR_INVALID_ARG_VALUE: The property 'options.highest' is invalid. Received 19n",
-          "TypeError ERR_INVALID_ARG_VALUE: The property 'options.lowest' is too large for 3 significant figures. Received 2305843009213693952n",
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 1n && <= 9223372036854775807n. Received 9_223_372_036_854_775_808n',
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 1n && <= 9223372036854775807n. Received 18_446_744_073_709_551_626n',
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 2 * options.lowest (20n). Received 19',
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 2 * options.lowest (20n). Received 19n',
+          "TypeError ERR_INVALID_ARG_VALUE: Invalid histogram options",
         ],
       );
     });
@@ -1803,6 +1801,22 @@ describe("Histogram", () => {
           'RangeError ERR_OUT_OF_RANGE: The value of "options.resolution" is out of range. It must be an integer. Received 1.5',
           `TypeError ERR_INVALID_ARG_TYPE: The "options.resolution" property must be of type number. Received type string ('10')`,
           'TypeError ERR_INVALID_ARG_TYPE: The "options.resolution" property must be of type number. Received type bigint (10n)',
+        ],
+      );
+    });
+
+    test("monitorEventLoopDelay takes the range and precision of its histogram", () => {
+      const h = monitorEventLoopDelay({ lowest: 1, highest: 1000n, figures: 2 });
+      h.disable();
+      assert.strictEqual(h.min, 9223372036854776000);
+      assert.deepStrictEqual(
+        [{ highest: 1999 }, { figures: 6 }, { lowest: 2n ** 61n, highest: 2n ** 62n }].map(value =>
+          thrown(() => monitorEventLoopDelay(value as any)),
+        ),
+        [
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.highest" is out of range. It must be >= 2 * options.lowest (2000n). Received 1999',
+          'RangeError ERR_OUT_OF_RANGE: The value of "options.figures" is out of range. It must be >= 1 && <= 5. Received 6',
+          "TypeError ERR_INVALID_ARG_VALUE: Invalid histogram options",
         ],
       );
     });

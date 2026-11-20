@@ -176,7 +176,7 @@ export const RecordableHistogram = b.class({
   },
 });
 
-/** https://github.com/nodejs/node/blob/v26.3.0/lib/internal/perf/event_loop_delay.js */
+/** https://github.com/nodejs/node/blob/v26.13.1/lib/internal/perf/event_loop_delay.js */
 export const ELDHistogram = b.class({
   ...nodeClass,
   extends: Histogram,
@@ -189,11 +189,19 @@ export const ELDHistogram = b.class({
   },
 });
 
-/** `null` if no histogram has this range and precision. */
+const range = { lowest: b.u64.allowBigInt, highest: b.u64.allowBigInt, figures: b.u32 };
+/** Throws if no histogram has this range and precision. */
 export const createRecordable = b.fn({
-  args: { lowest: b.u64.allowBigInt, highest: b.u64.allowBigInt, figures: b.u32, halfLife: b.f64, threshold: b.f64 },
-  returns: RecordableHistogram.nullable,
+  args: { ...range, halfLife: b.f64, threshold: b.f64 },
+  returns: RecordableHistogram,
   capability: "heap",
+  throws: true,
 });
-export const createInterval = b.fn({ args: { resolution: b.f64 }, returns: ELDHistogram, capability: "heap" });
+/** Throws if no histogram has this range and precision. */
+export const createInterval = b.fn({
+  args: { resolution: b.f64, ...range },
+  returns: ELDHistogram,
+  capability: "heap",
+  throws: true,
+});
 export const isHistogram = b.fn({ args: { value: b.any }, returns: b.bool });
