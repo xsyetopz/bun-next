@@ -4101,13 +4101,14 @@ RefPtr<Performance> GlobalObject::performance()
 
 extern "C" void Bun__handleRejectedPromise(Zig::GlobalObject* JSGlobalObject, JSC::JSPromise* promise, JSC::EncodedJSValue rejectionOwner);
 
-void GlobalObject::handleRejectedPromises()
+bool GlobalObject::handleRejectedPromises()
 {
     if (m_aboutToBeNotifiedRejectedPromises.isEmpty()) [[likely]]
-        return;
+        return false;
 
     JSC::VM& virtual_machine = vm();
     auto scope = DECLARE_TOP_EXCEPTION_SCOPE(virtual_machine);
+    bool reported = false;
     do {
         // Move the whole list out under one cellLock, then iterate linearly —
         // the same pattern JSC's VM::didExhaustMicrotaskQueue and WebCore's
@@ -4123,10 +4124,11 @@ void GlobalObject::handleRejectedPromises()
             // From here on a handler on this promise is late: promiseRejectionTracker(Handle) owes it 'rejectionHandled'.
             m_aboutToBeNotifiedRejectedPromises.markReported(this, promise);
 
+            reported = true;
             Bun__handleRejectedPromise(this, promise, JSValue::encode(rejectionOwners.at(i)));
             if (auto ex = scope.exception()) {
                 if (virtual_machine.isTerminationException(ex)) [[unlikely]]
-                    return;
+                    return reported;
                 (void)scope.tryClearException();
                 this->reportUncaughtExceptionAtEventLoop(this, ex);
             }
@@ -4134,6 +4136,7 @@ void GlobalObject::handleRejectedPromises()
         // An unhandledRejection handler may itself reject a promise; loop
         // until the list stays empty.
     } while (!m_aboutToBeNotifiedRejectedPromises.isEmpty());
+    return reported;
 }
 
 DEFINE_VISIT_CHILDREN(GlobalObject);

@@ -2213,6 +2213,37 @@ console.log(load());
     expect({ stdout: stdout.trim(), stderr, exitCode }).toEqual({ stdout: "ok", stderr: "", exitCode: 0 });
   });
 
+  it("runs what an unhandledRejection handler resumes before the loop decides it is empty", async () => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+          process.on("beforeExit", () => console.log("beforeExit"));
+          (async () => {
+            await new Promise(r => setTimeout(r, 1));
+            const { promise, resolve } = Promise.withResolvers();
+            process.once("unhandledRejection", reason => { console.log("unhandledRejection", reason); resolve(); });
+            Promise.reject("x");
+            await promise;
+            console.log("resumed");
+            await new Promise(r => setTimeout(r, 1));
+            console.log("timer");
+          })();
+        `,
+      ],
+      env: bunEnv,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout, stderr, exitCode }).toEqual({
+      stdout: "unhandledRejection x\nresumed\ntimer\nbeforeExit\n",
+      stderr: "",
+      exitCode: 0,
+    });
+  });
+
   // Pins which events fire, and in what order, whatever order the rejections of a
   // turn are handled in, and that the queue keeps a promise alive exactly as long
   // as it can still be reported. The "handling N rejected promises is O(N)" tests

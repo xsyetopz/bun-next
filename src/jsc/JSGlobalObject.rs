@@ -1070,8 +1070,9 @@ impl JSGlobalObject {
     }
 
     /// Runs the `unhandledRejection` machinery, which catches and reports its own exceptions; what
-    /// can come back is the VM's termination (taken at this boundary when at loop level).
-    pub fn handle_rejected_promises(&self) -> JsResult<()> {
+    /// can come back is the VM's termination (taken at this boundary when at loop level). `true` means
+    /// an `unhandledRejection` handler ran, so microtasks may be queued.
+    pub fn handle_rejected_promises(&self) -> JsResult<bool> {
         crate::from_js_host_call_generic(self, || JSC__JSGlobalObject__handleRejectedPromises(self))
     }
 
@@ -1477,7 +1478,7 @@ unsafe extern "C" {
     ) -> JSValue;
     safe fn JSC__JSGlobalObject__generateHeapSnapshot(this: &JSGlobalObject) -> JSValue;
 
-    safe fn JSC__JSGlobalObject__handleRejectedPromises(this: &JSGlobalObject);
+    safe fn JSC__JSGlobalObject__handleRejectedPromises(this: &JSGlobalObject) -> bool;
 
     safe fn ZigGlobalObject__readableStreamToArrayBuffer(
         this: &JSGlobalObject,

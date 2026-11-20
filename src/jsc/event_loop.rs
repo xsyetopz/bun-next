@@ -847,9 +847,16 @@ impl EventLoop {
             self.tick_concurrent();
         }
 
-        self.global_ref()
-            .handle_rejected_promises()
-            .map_err(|_| Stopped)
+        self.handle_rejected_promises_and_drain()
+    }
+
+    /// Node's `processTicksAndRejections`: what an `unhandledRejection` handler queues runs before the
+    /// turn ends, so a loop with nothing else to do does not exit with those continuations dropped.
+    pub fn handle_rejected_promises_and_drain(&self) -> Result<(), Stopped> {
+        while self.global_ref().handle_rejected_promises().map_err(|_| Stopped)? {
+            self.drain_microtasks()?;
+        }
+        Ok(())
     }
 
     /// Tick the task queue without draining microtasks afterward.

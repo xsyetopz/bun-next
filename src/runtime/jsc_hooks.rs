@@ -780,8 +780,7 @@ fn auto_tick(vm: &VirtualMachine) {
         loop_.tick_without_idle();
         // Still run the post-poll hooks.
         vm.on_after_event_loop();
-        // SAFETY: `vm.global` is set during `VirtualMachine::init` and outlives the VM.
-        let _ = unsafe { (*vm.global.get()).handle_rejected_promises() };
+        let _ = el.handle_rejected_promises_and_drain();
         return;
     };
 
@@ -838,8 +837,7 @@ fn auto_tick(vm: &VirtualMachine) {
     }
 
     vm.on_after_event_loop();
-    // SAFETY: `vm.global` is set during `VirtualMachine::init` and outlives the VM.
-    let _ = unsafe { (*vm.global.get()).handle_rejected_promises() };
+    let _ = el.handle_rejected_promises_and_drain();
 }
 
 fn run_pending_test_step(global: &JSGlobalObject) {
@@ -852,8 +850,7 @@ fn run_pending_test_step(global: &JSGlobalObject) {
 }
 
 /// `eventLoop().autoTickActive()`. Same shape as
-/// [`auto_tick`] but: no `runImminentGCTimer`, no `handleRejectedPromises` at
-/// the tail, and no debug sleep-timer logging. Used by `bun_main` /
+/// [`auto_tick`] but: no `runImminentGCTimer` and no debug sleep-timer logging. Used by `bun_main` /
 /// `on_before_exit` drain loops where blocking when the loop is idle would
 /// hang shutdown.
 fn auto_tick_active(vm: &VirtualMachine) {
@@ -928,6 +925,8 @@ fn auto_tick_active(vm: &VirtualMachine) {
     }
 
     vm.on_after_event_loop();
+    // A callback of this turn may leave the loop with nothing but an `unhandledRejection` handler's continuations.
+    let _ = el.handle_rejected_promises_and_drain();
 }
 
 /// `printException` / `printErrorlikeObject` — formats `value` to stderr via
