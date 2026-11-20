@@ -52,6 +52,14 @@ impl Crypto {
                 )
                 .into());
         };
+        if array_buffer.byte_len > 65536 {
+            return Err(global
+                .throw_dom_exception(
+                    bun_jsc::DOMExceptionCode::QuotaExceededError,
+                    format_args!("The requested length exceeds 65,536 bytes"),
+                )
+                .into());
+        }
 
         bun_boringssl_sys::rand_bytes(array_buffer.byte_slice_mut());
 

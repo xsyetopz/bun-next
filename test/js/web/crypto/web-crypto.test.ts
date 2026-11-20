@@ -1557,6 +1557,18 @@ describe("crypto.getRandomValues argument types", () => {
     ["plain object", () => ({})],
   ] as const;
 
+  it("fills at most 65536 bytes", () => {
+    const view = new Uint32Array(16384);
+    expect(crypto.getRandomValues(view)).toBe(view);
+    expect(() => crypto.getRandomValues(new BigInt64Array(8193))).toThrow(
+      expect.objectContaining({
+        name: "QuotaExceededError",
+        code: 22,
+        message: "The requested length exceeds 65,536 bytes",
+      }),
+    );
+  });
+
   it("needs an argument", () => {
     // @ts-expect-error
     expect(() => crypto.getRandomValues()).toThrow(
