@@ -304,7 +304,7 @@ describe("Histogram", () => {
     });
   });
 
-  describe("confidence intervals", () => {
+  describe("confidence intervals and tests", () => {
     const of = (values: number[]) => {
       const h = createHistogram() as any;
       for (const value of values) h.record(value);
@@ -328,11 +328,39 @@ describe("Histogram", () => {
       assert.deepStrictEqual({ ...of([9]).percentileCI(50) }, { value: 9, lower: 9, upper: 9 });
     });
 
+    test("welchTest and mannWhitneyTest compare two histograms", () => {
+      const low = of([1, 2, 3, 4]);
+      const high = of([3, 4, 5, 6]);
+      const welch = low.welchTest(high);
+      assert.strictEqual(Object.getPrototypeOf(welch.confidenceInterval), null);
+      assert.deepStrictEqual(rounded(welch), {
+        tStatistic: -2.19089,
+        degreesOfFreedom: 6,
+        pValue: 0.07099,
+        confidenceInterval: { lower: -4.23371, upper: 0.23371 },
+      });
+      assert.deepStrictEqual(rounded(low.mannWhitneyTest(high)), { uStatistic: 2, zScore: -1.75305, pValue: 0.07959 });
+      assert.deepStrictEqual(rounded(of([1]).welchTest(high)), {
+        tStatistic: 0,
+        degreesOfFreedom: 0,
+        pValue: 1,
+        confidenceInterval: { lower: 0, upper: 0 },
+      });
+      assert.deepStrictEqual({ ...of([]).mannWhitneyTest(high) }, { uStatistic: 0, zScore: 0, pValue: 1 });
+    });
+
+    test("a histogram compared with itself is compared as a copy", notInNode, () => {
+      const h = of([1, 2, 3, 4]);
+      assert.deepStrictEqual(rounded(h.mannWhitneyTest(h)), { uStatistic: 8, zScore: 0, pValue: 1 });
+      assert.strictEqual(h.welchTest(h).degreesOfFreedom, 6);
+    });
+
     test("validate their arguments", () => {
       const h = of([1, 2]);
       for (const confidence of [0, 1, NaN]) {
         assert.throws(() => h.meanCI({ confidence }), { code: "ERR_OUT_OF_RANGE", message: /"options\.confidence"/ });
         assert.throws(() => h.percentileCI(50, { confidence }), { code: "ERR_OUT_OF_RANGE" });
+        assert.throws(() => h.welchTest(h, { confidence }), { code: "ERR_OUT_OF_RANGE" });
       }
       const notNumber = {
         code: "ERR_INVALID_ARG_TYPE",
@@ -346,12 +374,15 @@ describe("Histogram", () => {
       assert.throws(() => h.percentileCI(50, { confidence: "0.9" }), notNumber);
       assert.throws(() => h.meanCI(null), notObject);
       assert.throws(() => h.percentileCI(50, null), notObject);
+      assert.throws(() => h.welchTest(h, null), notObject);
       for (const options of [[], () => {}, 1]) {
         assert.throws(() => h.meanCI(options), { code: "ERR_INVALID_ARG_TYPE" });
         assert.throws(() => h.percentileCI(50, options), { code: "ERR_INVALID_ARG_TYPE" });
       }
       assert.throws(() => h.percentileCI("50"), { code: "ERR_INVALID_ARG_TYPE" });
       assert.throws(() => h.percentileCI(0, null), { code: "ERR_OUT_OF_RANGE", message: /"percentile"/ });
+      assert.throws(() => h.welchTest({}), { code: "ERR_INVALID_ARG_TYPE", message: /"other"/ });
+      assert.throws(() => h.mannWhitneyTest(1), { code: "ERR_INVALID_ARG_TYPE" });
     });
   });
 
@@ -1835,6 +1866,7 @@ describe("Histogram", () => {
         "ksTest/1",
         "linearBuckets/1",
         "logBuckets/2",
+        "mannWhitneyTest/1",
         "meanCI/0",
         "percentile/1",
         "percentileBigInt/1",
@@ -1843,6 +1875,7 @@ describe("Histogram", () => {
         "reset/0",
         "snapshot/0",
         "toJSON/0",
+        "welchTest/1",
       ]);
       assert.strictEqual(
         Object.prototype.toString.call(h),

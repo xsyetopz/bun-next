@@ -1,4 +1,5 @@
-//! `meanCI()` and `percentileCI()`, and the distributions that they take their critical values from.
+//! `meanCI()` and `percentileCI()`, and the distributions that they and the tests in `compare.rs` take their
+//! critical values from.
 //!
 //! https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc
 
@@ -58,8 +59,13 @@ impl Histogram {
     }
 }
 
+/// The chance that a standard normal variable is at most `x`.
+pub(crate) fn normal_cdf(x: f64) -> f64 {
+    0.5 * (-x / core::f64::consts::SQRT_2).erfc()
+}
+
 /// The chance that a variable of Student's t-distribution with `df` degrees of freedom is at most `t`.
-fn student_t_cdf(t: f64, df: f64) -> f64 {
+pub(crate) fn student_t_cdf(t: f64, df: f64) -> f64 {
     let squared = t * t;
     let upper = t >= 0.0;
     if squared < df {
@@ -75,7 +81,7 @@ fn student_t_cdf(t: f64, df: f64) -> f64 {
 }
 
 /// The positive `t` that a variable of Student's t-distribution is above with chance `p`, found by bisection.
-fn student_t_upper_quantile(p: f64, df: f64) -> f64 {
+pub(crate) fn student_t_upper_quantile(p: f64, df: f64) -> f64 {
     let (mut low, mut high) = (0.0, 1.0);
     while student_t_cdf(-high, df) > p {
         high *= 2.0;

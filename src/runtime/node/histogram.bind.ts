@@ -39,6 +39,12 @@ export const ConfidenceOptions = b.dictionary(
 const result = { nullPrototype: true } as const;
 export const MeanCI = b.dictionary({ mean: b.f64, lower: b.f64, upper: b.f64 }, result);
 export const PercentileCI = b.dictionary({ value: b.u64, lower: b.u64, upper: b.u64 }, result);
+export const ConfidenceInterval = b.dictionary({ lower: b.f64, upper: b.f64 }, result);
+export const WelchTest = b.dictionary(
+  { tStatistic: b.f64, degreesOfFreedom: b.f64, pValue: b.f64, confidenceInterval: ConfidenceInterval },
+  result,
+);
+export const MannWhitneyTest = b.dictionary({ uStatistic: b.f64, zScore: b.f64, pValue: b.f64 }, result);
 
 /** https://github.com/nodejs/node/blob/v26.3.0/lib/internal/histogram.js */
 export const Histogram = b.class({
@@ -121,6 +127,17 @@ export const Histogram = b.class({
       capability: "js",
       throws: true,
     },
+    /** Welch's t-test of whether this and `other` have the same mean. */
+    welchTest: {
+      args: { other: b.self, options: b.any },
+      length: 1,
+      expected: { other: ["Histogram"] },
+      returns: WelchTest,
+      capability: "js",
+      throws: true,
+    },
+    /** The Mann-Whitney U test of whether the values of this tend to be larger than those of `other`. */
+    mannWhitneyTest: { args: { other: b.self }, expected: { other: ["Histogram"] }, returns: MannWhitneyTest },
     /** The largest gap between the cumulative distributions of this and `other`, from 0 to 1. */
     ksTest: compared,
     /** How far the mean of this is above that of `other`, in pooled sample standard deviations. */

@@ -13,7 +13,8 @@ use bun_jsc::{ErrorCode, JSGlobalObject, JSMap, JSValue, JsResult, MAX_SAFE_INTE
 use bun_threading::Guarded;
 
 use crate::generated_bindgen::histogram::{
-    ConfidenceOptions, HistogramJSON, MeanCI, PercentileCI, js_ELDHistogram, js_RecordableHistogram,
+    ConfidenceInterval, ConfidenceOptions, HistogramJSON, MannWhitneyTest, MeanCI, PercentileCI,
+    WelchTest, js_ELDHistogram, js_RecordableHistogram,
 };
 use crate::jsc_hooks::timer_all;
 use crate::node::util::validators;
@@ -334,6 +335,36 @@ impl Histogram {
         })
     }
 
+    /// Node.js: 0 with a `p` of 1 if `other` is this histogram, unlike for a copy of it.
+    pub(crate) fn welch_test<'a>(
+        &self,
+        cx: &mut JsScope<'a>,
+        other: &Histogram,
+        options: JsLocal<'a>,
+    ) -> bindgen::Result<'a, WelchTest> {
+        let confidence = check_confidence(cx, options)?;
+        let test = self.compare(other, |this, other| this.welch_test(other, confidence));
+        Ok(WelchTest {
+            t_statistic: test.t,
+            degrees_of_freedom: test.degrees_of_freedom,
+            p_value: test.p,
+            confidence_interval: ConfidenceInterval {
+                lower: test.lower,
+                upper: test.upper,
+            },
+        })
+    }
+
+    /// Node.js: 0 with a `p` of 1 if `other` is this histogram, unlike for a copy of it.
+    pub(crate) fn mann_whitney_test(&self, other: &Histogram) -> MannWhitneyTest {
+        let test = self.compare(other, bun_histogram::Histogram::mann_whitney_test);
+        MannWhitneyTest {
+            u_statistic: test.u,
+            z_score: test.z,
+            p_value: test.p,
+        }
+    }
+
     /// Node.js: 1 at every percentile if the histogram is empty.
     pub(crate) fn percentiles_at<'a>(
         &self,
@@ -450,11 +481,11 @@ impl Histogram {
     }
 
     /// Compares a copy of `other`, so that this holds one lock at a time.
-    fn compare(
+    fn compare<T>(
         &self,
         other: &Histogram,
-        f: impl FnOnce(&bun_histogram::Histogram, &bun_histogram::Histogram) -> f64,
-    ) -> f64 {
+        f: impl FnOnce(&bun_histogram::Histogram, &bun_histogram::Histogram) -> T,
+    ) -> T {
         let other = other.read(Clone::clone);
         self.read(|this| f(this, &other))
     }
