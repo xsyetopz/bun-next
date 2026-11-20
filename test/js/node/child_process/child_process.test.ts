@@ -1,5 +1,6 @@
 import { semver, write } from "bun";
 import { afterAll, beforeEach, describe, expect, it } from "bun:test";
+import dc from "node:diagnostics_channel";
 import fs from "fs";
 import {
   bunEnv,
@@ -1810,4 +1811,49 @@ describe.skipIf(!isPosix)("child.stdout pull nested in a 'data' event", () => {
     // several seconds, and the fixtures give up on their markers after 15 s so
     // their own error, not a test timeout, is what gets reported.
   }, 30_000);
+});
+
+describe("child_process diagnostics channels", () => {
+  function record() {
+    const events: unknown[][] = [];
+    const listeners = {
+      child_process: ({ process }) => events.push(["child_process", process instanceof ChildProcess]),
+      start: ({ process, options }) => events.push(["start", process instanceof ChildProcess, options.file]),
+      end: ({ process }) => events.push(["end", typeof process.pid]),
+      error: ({ error }) => events.push(["error", error.code]),
+    };
+    const { child_process, ...spawnListeners } = listeners;
+    dc.subscribe("child_process", child_process);
+    const tracing = dc.tracingChannel("child_process.spawn");
+    tracing.subscribe(spawnListeners);
+    return {
+      events,
+      [Symbol.dispose]() {
+        dc.unsubscribe("child_process", child_process);
+        tracing.unsubscribe(spawnListeners);
+      },
+    };
+  }
+
+  it("publishes the process, then the spawn start and end", async () => {
+    using recorder = record();
+    const child = spawn(bunExe(), ["-e", ""], { env: bunEnv, stdio: "ignore" });
+    await new Promise(resolve => child.on("close", resolve));
+    expect(recorder.events).toEqual([
+      ["child_process", true],
+      ["start", true, bunExe()],
+      ["end", "number"],
+    ]);
+  });
+
+  it("publishes a spawn error", async () => {
+    using recorder = record();
+    const child = spawn("this-command-does-not-exist-bun", { stdio: "ignore" });
+    await new Promise(resolve => child.on("error", resolve));
+    expect(recorder.events).toEqual([
+      ["child_process", true],
+      ["start", true, "this-command-does-not-exist-bun"],
+      ["error", "ENOENT"],
+    ]);
+  });
 });

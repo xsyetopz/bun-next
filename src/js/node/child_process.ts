@@ -2,6 +2,9 @@
 const EventEmitter = require("node:events");
 const { kHandle } = require("internal/shared");
 const setChannelRef = $bindgen("node_cluster_binding.bind.ts", "setChannelRef");
+const dc = require("node:diagnostics_channel");
+const childProcessChannel = dc.channel("child_process");
+const childProcessSpawn = dc.tracingChannel("child_process.spawn");
 const {
   validateBoolean,
   validateFunction,
@@ -1162,6 +1165,11 @@ class ChildProcess extends EventEmitter {
   channel;
   killed = false;
 
+  constructor() {
+    super();
+    if (childProcessChannel.hasSubscribers) childProcessChannel.publish({ process: this });
+  }
+
   [Symbol.dispose]() {
     if (!this.killed) {
       this.kill();
@@ -1458,6 +1466,7 @@ class ChildProcess extends EventEmitter {
       validateArray(options.args, "options.args");
       spawnargs = this.spawnargs = options.args;
     }
+    if (childProcessSpawn.hasSubscribers) childProcessSpawn.start.publish({ process: this, options });
     // What script of a disposed Bun.ModuleGraph starts does not start, and reports nothing: a
     // child without a handle, as after a failed spawn, but with no 'error' and no 'close'.
     if (require("internal/shared").isStoppedModuleGraphRunning()) {
@@ -1514,6 +1523,7 @@ class ChildProcess extends EventEmitter {
       this.pid = this.#handle!.pid;
 
       $debug("ChildProcess: spawn", this.pid, spawnargs);
+      if (childProcessSpawn.hasSubscribers) childProcessSpawn.end.publish({ process: this });
 
       process.nextTick(() => {
         this.emit("spawn");
@@ -1553,6 +1563,7 @@ class ChildProcess extends EventEmitter {
         this.#handle = null;
         (ex as SystemError).syscall = "spawn " + this.spawnfile;
         (ex as SystemError).spawnargs = Array.prototype.slice.$call(this.spawnargs, 1);
+        if (childProcessSpawn.hasSubscribers) childProcessSpawn.error.publish({ process: this, error: ex });
         process.nextTick(() => {
           this.emit("error", ex);
           this.emit("close", (ex as SystemError).errno ?? -1);
@@ -1568,6 +1579,7 @@ class ChildProcess extends EventEmitter {
           // Node throws errors that are not in the deferred list above
           // synchronously, with `syscall: "spawn"` (no file appended).
           (ex as SystemError).syscall = "spawn";
+          if (childProcessSpawn.hasSubscribers) childProcessSpawn.error.publish({ process: this, error: ex });
         }
         throw ex;
       }
