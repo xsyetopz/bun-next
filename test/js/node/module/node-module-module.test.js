@@ -36,6 +36,19 @@ describe.concurrent("node-module-module", () => {
     expect(isBuiltin("test")).toBe(false); // "test" does not alias to "node:test"
   });
 
+  test("isBuiltin() answers bun: + a bare Node builtin name like that builtin", () => {
+    const names = ["bun:fs", "bun:fs/promises", "bun:sys", "bun:sqlite", "bun:test", "bun:node:fs", "bun:bacon"];
+    expect(Object.fromEntries(names.map(name => [name, isBuiltin(name)]))).toEqual({
+      "bun:fs": true,
+      "bun:fs/promises": true,
+      "bun:sys": true,
+      "bun:sqlite": true,
+      "bun:test": true,
+      "bun:node:fs": false,
+      "bun:bacon": false,
+    });
+  });
+
   test("_stat() says what is at a path", () => {
     expect(Module._stat(import.meta.path)).toBe(0);
     expect(Module._stat(import.meta.dir)).toBe(1);

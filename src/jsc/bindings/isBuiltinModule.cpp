@@ -1,4 +1,5 @@
 #include "root.h"
+#include "isBuiltinModule.h"
 
 static constexpr ASCIILiteral builtinModuleNamesSortedLength[] = {
     "fs"_s,
@@ -92,6 +93,10 @@ bool isBuiltinModule(const String& namePossiblyWithNodePrefix)
         if (namePossiblyWithNodePrefix == builtinModule)
             return true;
     }
+
+    // `bun:` + a bare Node builtin name loads that builtin (Alias::bun_prefixed_builtin).
+    if (namePossiblyWithNodePrefix.startsWith("bun:"_s))
+        return !isUnprefixedNodeBuiltin(namePossiblyWithNodePrefix.substringSharingImpl(4)).isNull();
 
     // If no match found and the name has a "node:" prefix, try without the prefix
     String name = namePossiblyWithNodePrefix;
