@@ -10,15 +10,15 @@ pub(crate) struct Beta {
     a: f64,
     b: f64,
     log_normalization: f64,
-    mean: f64,
-    standard_deviation: f64,
+    pub(crate) mean: f64,
+    pub(crate) standard_deviation: f64,
     skewness: f64,
     excess_kurtosis: f64,
     log_scale: f64,
     /// The continued fraction converges fastest below it, so above it the other tail is computed.
     pub(crate) symmetry_point: f64,
     asymptotic_front: bool,
-    asymptotic_cdf: bool,
+    pub(crate) asymptotic_cdf: bool,
 }
 
 impl Beta {

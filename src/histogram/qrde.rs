@@ -2,6 +2,8 @@
 //!
 //! https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc
 
+use core::ops::Range;
+
 use crate::Histogram;
 use crate::beta::{Beta, clamp};
 
@@ -140,9 +142,29 @@ impl Ranges<'_> {
 
         let (mut previous_cdf, mut previous_survival, mut previous_front) = (0.0, 0.0, 0.0);
         let mut previous_count = 0;
-        let mut quantile = 0.0;
+        let mut support = self.support(&mass, total);
+        if let Some(before) = support
+            .start
+            .checked_sub(1)
+            .and_then(|i| self.buckets.get(i))
+        {
+            let (cdf, front) = mass.cdf_and_front(before.cumulative as f64 / count);
+            if cdf.is_finite() && (front.is_finite() || self.dequantize == Dequantize::None) {
+                (previous_cdf, previous_front) = (clamp(cdf, 0.0, 1.0), front);
+                previous_count = before.cumulative;
+            } else {
+                support = 0..self.buckets.len();
+            }
+        }
+        let mut quantile = self.at(0).unwrap_or_default().0 * previous_cdf;
         let mut using_survival = false;
-        for (index, bucket) in self.buckets.iter().enumerate() {
+        for (index, bucket) in self
+            .buckets
+            .iter()
+            .enumerate()
+            .take(support.end)
+            .skip(support.start)
+        {
             let u0 = previous_count as f64 / count;
             let u1 = bucket.cumulative as f64 / count;
             let front;
@@ -192,5 +214,51 @@ impl Ranges<'_> {
             1.0 - previous_cdf
         };
         quantile + highest * clamp(remaining, 0.0, 1.0)
+    }
+
+    /// The buckets that hold all but a negligible share of the weight of `mass`, to skip the rest.
+    fn support(&self, mass: &Beta, total: u64) -> Range<usize> {
+        let all = 0..self.buckets.len();
+        let count = total as f64;
+        let first_reaching = |share: f64, from: usize| {
+            from + self
+                .buckets
+                .get(from..)
+                .unwrap_or_default()
+                .partition_point(|bucket| (bucket.cumulative as f64) < share * count)
+        };
+        if mass.asymptotic_cdf {
+            // Beyond 12 standard deviations the normal tails hold less than 2e-33.
+            let spread = 12.0 * mass.standard_deviation;
+            let first = first_reaching((mass.mean - spread).max(0.0), 0);
+            let last = first_reaching((mass.mean + spread).min(1.0), first);
+            return first..(last + 1).min(all.end);
+        }
+        if self.buckets.len() < 512 {
+            return all;
+        }
+        // Dropping both tails moves a quantile by at most 2^-79 of the range of the histogram.
+        const TAIL: f64 = 1.0 / (1u128 << 80) as f64;
+        let reflected = mass.reflected();
+        let mut finite = true;
+        let first = self.buckets.partition_point(|bucket| {
+            let cdf = mass.cdf(bucket.cumulative as f64 / count);
+            finite &= cdf.is_finite();
+            cdf < TAIL
+        });
+        let last = first
+            + self
+                .buckets
+                .get(first..)
+                .unwrap_or_default()
+                .partition_point(|bucket| {
+                    let survival = reflected.cdf((total - bucket.cumulative) as f64 / count);
+                    finite &= survival.is_finite();
+                    survival > TAIL
+                });
+        if !finite || last >= all.end {
+            return all;
+        }
+        first..last + 1
     }
 }
