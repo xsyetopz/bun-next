@@ -34,6 +34,7 @@ interface UtilModule {
   convertProcessSignalToExitCode: typeof convertProcessSignalToExitCode;
   debug: typeof debuglog;
   debuglog: typeof debuglog;
+  debounce: typeof import("internal/util/debounce").default;
   deprecate: typeof deprecate;
   format: InspectModule["format"];
   styleText: typeof styleText;
@@ -797,6 +798,12 @@ var cjs_exports: UtilModule = {
   convertProcessSignalToExitCode,
   debug: debuglog,
   debuglog,
+  get debounce() {
+    return require("internal/util/debounce");
+  },
+  set debounce(value) {
+    Object.defineProperty(cjs_exports, "debounce", { value, writable: true, enumerable: true, configurable: true });
+  },
   deprecate,
   get format() {
     return require("internal/util/inspect").format;

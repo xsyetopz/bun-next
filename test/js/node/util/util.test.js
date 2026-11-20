@@ -934,3 +934,73 @@ describe("util.parseEnv", () => {
     expect(JSON.parse(JSON.stringify(parsed))).toEqual({ 0: "set", 2023: "y", A: "1", 4294967295: "notidx" });
   });
 });
+
+describe("util.debounce", () => {
+  it("is an enumerable export that validates its arguments like Node", () => {
+    expect(Object.keys(util)).toContain("debounce");
+    expect(() => util.debounce(1, 1)).toThrow(expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }));
+    expect(() => util.debounce(() => {}, -1)).toThrow(expect.objectContaining({ code: "ERR_OUT_OF_RANGE" }));
+    expect(() => util.debounce(() => {}, 2 ** 31)).toThrow(expect.objectContaining({ code: "ERR_OUT_OF_RANGE" }));
+    expect(() => util.debounce(() => {}, 1, { leading: 1 })).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }),
+    );
+    expect(() => util.debounce(() => {}, 1, { signal: AbortSignal.abort("why") })).toThrow(
+      expect.objectContaining({ name: "AbortError", cause: "why" }),
+    );
+  });
+
+  it("calls fn once with the last arguments and the debounced function as this", async () => {
+    const calls = [];
+    const debounced = util.debounce(function (a, b) {
+      calls.push([this, a, b]);
+      return a + b;
+    }, 1000);
+    const first = debounced(1, 1);
+    const second = debounced(2, 3);
+    expect(debounced.pendingCount).toBe(2);
+    expect(debounced.pending).toBe(second);
+    debounced.flush();
+    expect(await Promise.all([first, second])).toEqual([5, 5]);
+    expect(calls).toEqual([[debounced, 2, 3]]);
+    expect(debounced.pending).toBeNull();
+  });
+
+  it("copies name and length and exposes the Node method and getter shapes", () => {
+    function original(a, b) {}
+    const debounced = util.debounce(original, 1);
+    expect([debounced.name, debounced.length]).toEqual(["original", 2]);
+    expect(Object.keys(debounced)).toEqual(["cancel", "flush", "ref", "unref"]);
+    expect(debounced.unref()).toBe(debounced);
+    expect(debounced.ref()).toBe(debounced);
+  });
+
+  it("invokes on the leading edge and settles a trailing call after the wait", async () => {
+    const values = [];
+    const debounced = util.debounce(value => (values.push(value), value), 0, { leading: true });
+    expect(await debounced("lead")).toBe("lead");
+    expect(await debounced("trail")).toBe("trail");
+    expect(values).toEqual(["lead", "trail"]);
+  });
+
+  it("rejects superseded calls with rejectOnCancel and cancelled calls with an AbortError", async () => {
+    const debounced = util.debounce(value => value, 1000, { rejectOnCancel: true });
+    const superseded = debounced(1);
+    const cancelled = debounced(2);
+    debounced.cancel("reason");
+    expect(await superseded.catch(e => [e.name, e.message])).toEqual([
+      "AbortError",
+      "The debounced call was superseded",
+    ]);
+    expect(await cancelled.catch(e => [e.name, e.cause])).toEqual(["AbortError", "reason"]);
+  });
+
+  it("rejects pending and later calls once the signal aborts", async () => {
+    const controller = new AbortController();
+    const debounced = util.debounce(() => {}, 1000, { signal: controller.signal });
+    const pending = debounced();
+    controller.abort("stop");
+    const error = await pending.catch(e => e);
+    expect([error.name, error.cause]).toEqual(["AbortError", "stop"]);
+    expect(await debounced().catch(e => e)).toBe(error);
+  });
+});
