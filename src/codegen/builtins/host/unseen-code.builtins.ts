@@ -278,6 +278,7 @@ const nativeFiles = [
   "NodeAsyncHooks.cpp",
   "NodeFetch.cpp",
   "NodeHTTP.cpp",
+  "NodeLocks.cpp",
   "NodeTLS.cpp",
   "NodeURL.cpp",
   "NodeUtilTypesModule.cpp",

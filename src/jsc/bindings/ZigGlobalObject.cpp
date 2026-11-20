@@ -179,6 +179,7 @@
 #include "NativePromiseContext.h"
 #include "napi.h"
 #include "NodeHTTP.h"
+#include "NodeLocks.h"
 #include "NodeVM.h"
 #include "Performance.h"
 #include "ProcessBindingConstants.h"
@@ -5422,6 +5423,7 @@ void GlobalObject::prepareForDestruction()
     // unrun by the teardown, or refused once the VM handle closes). DeferredWorkTimer is fenced
     // separately because finalizers during the final collection and ~VM both reach scheduleWorkSoon().
     context->markTerminating();
+    Bun::releaseLocksOfContext(context->identifier());
     WebCore::clientData(vm)->deferredWorkTimer.markShuttingDown();
 
     // WorkerOrWorkletGlobalScope::prepareForDestruction(): stop every ActiveDOMObject (workers are
