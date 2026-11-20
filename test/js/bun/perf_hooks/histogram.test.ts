@@ -264,6 +264,62 @@ describe("Histogram", () => {
     });
   });
 
+  describe("qrde", () => {
+    test("resolves to the quantiles at even steps and the densities between them", async () => {
+      const h = createHistogram() as any;
+      for (const value of [3, 4, 7]) h.record(value);
+      const result = await h.qrde({ bins: 2, dequantize: "none" });
+      assert.strictEqual(Object.getPrototypeOf(result), null);
+      assert.deepStrictEqual(Object.keys(result), [
+        "probabilities",
+        "quantiles",
+        "densities",
+        "count",
+        "bucketCount",
+        "corrections",
+        "dequantize",
+      ]);
+      assert.deepStrictEqual(result.probabilities, new Float64Array([0, 0.5, 1]));
+      assert.deepStrictEqual([result.quantiles[0], result.quantiles[2]], [3, 7]);
+      assert.ok(Math.abs(result.quantiles[1] - 122 / 27) < 1e-12);
+      assert.deepStrictEqual([result.count, result.bucketCount, result.corrections], [3n, 3, 0]);
+    });
+
+    test("validates its options with the messages of Node.js", () => {
+      const h = createHistogram() as any;
+      const cases: [unknown, string][] = [
+        [null, `The "options" argument must be of type object. Received null`],
+        [{ bins: 1.5 }, `The value of "options.bins" is out of range. It must be an integer. Received 1.5`],
+        [{ bins: 0 }, `The value of "options.bins" is out of range. It must be >= 1 && <= 1000. Received 0`],
+        [{ bins: "2" }, `The "options.bins" property must be of type number. Received type string ('2')`],
+        [
+          { bins: 2, probabilities: [0, 1] },
+          `The argument 'options' "bins" and "probabilities" are mutually exclusive. Received { bins: 2, probabilities: [ 0, 1 ] }`,
+        ],
+        [
+          { probabilities: "x" },
+          `The "options.probabilities" property must be an instance of Array. Received type string ('x')`,
+        ],
+        [{ probabilities: [0] }, `The property 'options.probabilities' must be longer than 2. Received [ 0 ]`],
+        [
+          { probabilities: [0, 1.5, 1] },
+          `The value of "options.probabilities[1]" is out of range. It must be >= 0 && <= 1. Received 1.5`,
+        ],
+        [
+          { probabilities: [0, 0.5, 0.5, 1] },
+          `The property 'options.probabilities' must be strictly increasing. Received [ 0, 0.5, 0.5, 1 ]`,
+        ],
+        [
+          { probabilities: [0, 0.5] },
+          `The property 'options.probabilities' must start with 0 and end with 1. Received [ 0, 0.5 ]`,
+        ],
+        [{ dequantize: "x" }, `The property 'options.dequantize' must be one of: 'none', 'hdr', 'all'. Received 'x'`],
+        [{ cache: 1 }, `The "options.cache" property must be of type boolean. Received type number (1)`],
+      ];
+      for (const [options, message] of cases) assert.throws(() => h.qrde(options), { message: message });
+    });
+  });
+
   describe("ksTest, cohensD and cliffsD", () => {
     const of = (values: number[], options?: object) => {
       const h = createHistogram(options) as any;
@@ -1872,6 +1928,7 @@ describe("Histogram", () => {
         "percentileBigInt/1",
         "percentileCI/1",
         "percentilesAt/1",
+        "qrde/0",
         "reset/0",
         "snapshot/0",
         "toJSON/0",

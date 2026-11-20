@@ -8,8 +8,11 @@ use std::sync::Arc;
 
 use bun_core::fmt::{NodeNumber, OutOfRangeOptions, double, out_of_range};
 use bun_core::{Timespec, TimespecMockMode};
+use bun_histogram::Dequantize;
 use bun_jsc::bindgen::{self, JsHeap, JsLocal, JsPayload as _, JsScope, JsWrapper, to_js};
-use bun_jsc::{ErrorCode, JSGlobalObject, JSMap, JSValue, JsResult, MAX_SAFE_INTEGER};
+use bun_jsc::{
+    BinaryType, ErrorCode, JSGlobalObject, JSMap, JSPromise, JSValue, JsResult, MAX_SAFE_INTEGER,
+};
 use bun_threading::Guarded;
 
 use crate::generated_bindgen::histogram::{
@@ -365,6 +368,47 @@ impl Histogram {
         }
     }
 
+    /// Node.js: computed before it returns, so the `Promise` is already resolved, and `options.cache` changes
+    /// nothing, since no snapshot of the slots is kept between calls.
+    pub(crate) fn qrde<'a>(
+        &self,
+        cx: &mut JsScope<'a>,
+        options: JsLocal<'a>,
+    ) -> bindgen::Result<'a, JSValue> {
+        let (probabilities, dequantize) = qrde_options(cx, options.to_js())?;
+        let (estimate, count) = self.read(|histogram| {
+            (
+                histogram.qrde(&probabilities, dequantize),
+                histogram.count(),
+            )
+        });
+        let global = cx.global();
+        let result = JSValue::create_empty_object_with_null_prototype(global);
+        let floats = |values: &[f64]| {
+            BinaryType::Float64Array.to_js(bun_core::slice_as_bytes(values), global)
+        };
+        result.put(global, b"probabilities", floats(&probabilities)?);
+        result.put(global, b"quantiles", floats(&estimate.quantiles)?);
+        result.put(global, b"densities", floats(&estimate.densities)?);
+        let count = JSValue::from_uint64_no_truncate(global, count)?;
+        result.put(global, b"count", count);
+        let bucket_count = JSValue::js_number(estimate.buckets as f64);
+        result.put(global, b"bucketCount", bucket_count);
+        let corrections = JSValue::js_number(estimate.corrections as f64);
+        result.put(global, b"corrections", corrections);
+        let dequantize = match dequantize {
+            Dequantize::None => global.common_strings().none(),
+            Dequantize::Hdr => {
+                bun_jsc::StringJsc::to_js(&bun_core::String::static_("hdr"), global)?
+            }
+            Dequantize::All => {
+                bun_jsc::StringJsc::to_js(&bun_core::String::static_("all"), global)?
+            }
+        };
+        result.put(global, b"dequantize", dequantize);
+        Ok(JSPromise::resolved_promise_value(global, result))
+    }
+
     /// Node.js: 1 at every percentile if the histogram is empty.
     pub(crate) fn percentiles_at<'a>(
         &self,
@@ -694,8 +738,8 @@ impl Histogram {
 fn check_range<'a>(
     heap: &JsHeap<'a>,
     value: f64,
-    field_name: &'static [u8],
-    msg: &'static [u8],
+    field_name: &[u8],
+    msg: &[u8],
     within: impl Fn(f64) -> bool,
 ) -> bindgen::Result<'a, ()> {
     if within(value) {
@@ -733,6 +777,163 @@ fn check_confidence<'a>(cx: &mut JsScope<'a>, options: JsLocal<'a>) -> bindgen::
         |c| c > 0.0 && c < 1.0,
     )?;
     Ok(confidence)
+}
+
+/// The probabilities and the dequantization of `qrde()`, validated in the order that Node.js validates them.
+fn qrde_options<'a>(
+    cx: &mut JsScope<'a>,
+    options: JSValue,
+) -> bindgen::Result<'a, (Vec<f64>, Dequantize)> {
+    let given = !options.is_undefined();
+    if given && (!options.is_object() || options.is_array() || options.is_callable()) {
+        Err(cx
+            .global()
+            .throw_invalid_argument_type_value(b"options", b"object", options))?;
+    }
+    let mut field = |name: &str| -> JsResult<Option<JSValue>> {
+        if !given {
+            return Ok(None);
+        }
+        Ok(options
+            .get(cx.global(), name)?
+            .filter(|value| !value.is_undefined()))
+    };
+    let (bins, probabilities) = (field("bins")?, field("probabilities")?);
+    let (dequantize, cache) = (field("dequantize")?, field("cache")?);
+    if bins.is_some() && probabilities.is_some() {
+        let reason = "\"bins\" and \"probabilities\" are mutually exclusive";
+        return Err(invalid_value(cx, "options", options, reason));
+    }
+    let probabilities = if let Some(array) = probabilities {
+        let name = "options.probabilities";
+        if !array.is_array() {
+            return Err(invalid_type(cx, name, "an instance of Array", array));
+        }
+        let length = array.get_length(cx.global())?;
+        if length < 2 {
+            return Err(invalid_value(cx, name, array, "must be longer than 2"));
+        }
+        check_range(
+            &cx.heap,
+            length as f64,
+            b"options.probabilities.length",
+            b">= 2 && <= 1001",
+            |l| l <= 1001.0,
+        )?;
+        let mut values: Vec<f64> = Vec::with_capacity(length as usize);
+        for index in 0..length as u32 {
+            let element = format!("{name}[{index}]");
+            let value = array.get_index(cx.global(), index)?;
+            let value = number(cx, &element, value)?;
+            check_range(&cx.heap, value, element.as_bytes(), b">= 0 && <= 1", |p| {
+                (0.0..=1.0).contains(&p)
+            })?;
+            if values.last().is_some_and(|&previous| value <= previous) {
+                return Err(invalid_value(
+                    cx,
+                    name,
+                    array,
+                    "must be strictly increasing",
+                ));
+            }
+            values.push(value);
+        }
+        if values.first() != Some(&0.0) || values.last() != Some(&1.0) {
+            return Err(invalid_value(
+                cx,
+                name,
+                array,
+                "must start with 0 and end with 1",
+            ));
+        }
+        values
+    } else {
+        let name = "options.bins";
+        let bins = number(cx, name, bins.unwrap_or(JSValue::js_number(100.0)))?;
+        check_range(&cx.heap, bins, name.as_bytes(), b"an integer", |b| {
+            b.is_finite() && b.trunc() == b
+        })?;
+        check_range(&cx.heap, bins, name.as_bytes(), b">= 1 && <= 1000", |b| {
+            (1.0..=1000.0).contains(&b)
+        })?;
+        (0..=bins as u32).map(|i| f64::from(i) / bins).collect()
+    };
+    let dequantize = match dequantize {
+        None => Dequantize::Hdr,
+        Some(value) => {
+            let text = if value.is_string() {
+                Some(value.to_bun_string(cx.global())?)
+            } else {
+                None
+            };
+            match text {
+                Some(text) if text.eq_ascii(b"none") => Dequantize::None,
+                Some(text) if text.eq_ascii(b"hdr") => Dequantize::Hdr,
+                Some(text) if text.eq_ascii(b"all") => Dequantize::All,
+                _ => {
+                    let reason = "must be one of: 'none', 'hdr', 'all'";
+                    return Err(invalid_value(cx, "options.dequantize", value, reason));
+                }
+            }
+        }
+    };
+    if let Some(cache) = cache.filter(|cache| !cache.is_boolean()) {
+        return Err(invalid_type(cx, "options.cache", "of type boolean", cache));
+    }
+    Ok((probabilities, dequantize))
+}
+
+/// Node.js calls a name with a dot in it a property in its messages.
+fn named(name: &str) -> &'static str {
+    if bun_core::strings::contains_char(name.as_bytes(), b'.') {
+        "property"
+    } else {
+        "argument"
+    }
+}
+
+fn number<'a>(cx: &mut JsScope<'a>, name: &str, value: JSValue) -> bindgen::Result<'a, f64> {
+    if value.is_number() {
+        return Ok(value.as_number());
+    }
+    Err(invalid_type(cx, name, "of type number", value))
+}
+
+/// Node.js's `ERR_INVALID_ARG_TYPE`.
+fn invalid_type<'a>(
+    cx: &mut JsScope<'a>,
+    name: &str,
+    expected: &str,
+    value: JSValue,
+) -> bindgen::Error<'a> {
+    let received = match JSGlobalObject::determine_specific_type(cx.global(), value) {
+        Ok(received) => received,
+        Err(error) => return error.into(),
+    };
+    cx.heap.error_with_code(
+        ErrorCode::INVALID_ARG_TYPE,
+        format_args!(
+            "The \"{name}\" {} must be {expected}. Received {received}",
+            named(name)
+        ),
+    )
+}
+
+/// Node.js's `ERR_INVALID_ARG_VALUE`.
+fn invalid_value<'a>(
+    cx: &mut JsScope<'a>,
+    name: &str,
+    value: JSValue,
+    reason: &str,
+) -> bindgen::Error<'a> {
+    let received = match JSGlobalObject::inspect_for_error_message(cx.global(), value) {
+        Ok(received) => received,
+        Err(error) => return error.into(),
+    };
+    cx.heap.error_with_code(
+        ErrorCode::INVALID_ARG_VALUE,
+        format_args!("The {} '{name}' {reason}. Received {received}", named(name)),
+    )
 }
 
 /// `value`, a BigInt, if it is at least `min` and fits in an `i64`.

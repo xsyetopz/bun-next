@@ -25,6 +25,8 @@ pub struct Qrde {
     pub densities: Vec<f64>,
     /// How many quantiles were raised to the one before them.
     pub corrections: usize,
+    /// How many slots hold values.
+    pub buckets: usize,
 }
 
 /// A slot in use.
@@ -96,6 +98,7 @@ impl Histogram {
             quantiles,
             densities,
             corrections,
+            buckets: buckets.len(),
         }
     }
 }

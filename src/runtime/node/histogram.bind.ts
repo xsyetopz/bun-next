@@ -144,6 +144,14 @@ export const Histogram = b.class({
     cohensD: compared,
     /** Of the pairs of a value of this and one of `other`, the share where this is larger, less the share where it is smaller. */
     cliffsD: compared,
+    /** A `Promise` of the quantiles at `options.probabilities`, or at `options.bins` even steps, and the densities between them. */
+    qrde: {
+      args: { options: b.any },
+      length: 0,
+      returns: b.any.returning("Promise"),
+      capability: "js",
+      throws: true,
+    },
     reset: {},
     toJSON: { returns: HistogramJSON, capability: "heap", throws: true },
     "@@inspectCustom": { builtin: true, length: 2 },
