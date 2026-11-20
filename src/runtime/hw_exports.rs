@@ -80,6 +80,12 @@ pub(crate) fn set_override_module_run_main(vm: &VirtualMachine, is_patched: bool
     }
 }
 
+/// `export fn Bun__VirtualMachine__isInPreload(vm) bool`
+// HOST_EXPORT(Bun__VirtualMachine__isInPreload, c)
+pub(crate) fn is_in_preload(vm: &VirtualMachine) -> bool {
+    vm.is_in_preload.get()
+}
+
 /// `export fn Bun__VirtualMachine__setOverrideModuleRunMainPromise(vm, promise)`
 // HOST_EXPORT(Bun__VirtualMachine__setOverrideModuleRunMainPromise, c)
 pub(crate) fn set_override_module_run_main_promise(

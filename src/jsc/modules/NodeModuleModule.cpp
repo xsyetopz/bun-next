@@ -820,6 +820,16 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionRunMain, (JSGlobalObject * globalObject, JSC:
     return JSC::JSValue::encode(JSC::jsUndefined());
 }
 
+extern "C" bool Bun__VirtualMachine__isInPreload(void* bunVM);
+
+JSC_DEFINE_CUSTOM_GETTER(nodeModuleIsPreloading,
+    (JSGlobalObject * lexicalGlobalObject,
+        EncodedJSValue thisValue,
+        PropertyName propertyName))
+{
+    return JSValue::encode(jsBoolean(Bun__VirtualMachine__isInPreload(defaultGlobalObject(lexicalGlobalObject)->bunVM())));
+}
+
 JSC_DEFINE_CUSTOM_GETTER(moduleRunMain,
     (JSGlobalObject * lexicalGlobalObject,
         EncodedJSValue thisValue,
@@ -997,6 +1007,7 @@ flushCompileCache       jsFunctionFlushCompileCache       Function 0
 getCompileCacheDir      jsFunctionGetCompileCacheDir      Function 0
 globalPaths             getGlobalPathsObject              PropertyCallback
 isBuiltin               jsFunctionIsBuiltinModule         Function 1
+isPreloading            nodeModuleIsPreloading            DontEnum|DontDelete|ReadOnly|CustomAccessor
 prototype               getModulePrototypeObject          DontEnum|DontDelete|PropertyCallback
 register                jsFunctionRegister                Function 1
 runMain                 moduleRunMain                        CustomAccessor

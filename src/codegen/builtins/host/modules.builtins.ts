@@ -403,6 +403,8 @@ export default b.declarations(
   // The setter of each keeps what is stored and the getter answers it, so both read and write as a property does: followStoredLoaderFunctionsOfCommonJS() in AOTFlowRulesCommonJS.cpp finds what the program has stored in the cell.
   b.static("node:module._resolveFilename", b.property(b.any)),
   b.static("node:module.runMain", b.property(b.any)),
+  // nodeModuleIsPreloading in NodeModuleModule.cpp reads whether the VM is running --require preloads.
+  b.static("node:module.isPreloading", { getter: b.bool, capability: "none", mutability: "ChangesOnItsOwn" }),
   b.static("node:module._cache", b.property(moduleCache)),
   b.static("node:module._extensions", b.property(moduleExtensions)),
   // It returns undefined and converts nothing.
