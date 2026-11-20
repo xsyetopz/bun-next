@@ -45,6 +45,7 @@ interface UtilModule {
   inherits: typeof inherits;
   inspect: InspectModule["inspect"];
   isDeepStrictEqual: typeof isDeepStrictEqual;
+  isPartialDeepStrictEqual: typeof isPartialDeepStrictEqual;
   promisify: typeof promisify;
   setTraceSigInt: typeof setTraceSigInt;
   stripVTControlCharacters: InspectModule["stripVTControlCharacters"];
@@ -86,7 +87,11 @@ function isFunction(value) {
 // Node semantics (includes the [[Prototype]] identity check Bun.deepEquals omits) plus the
 // skipPrototype third argument, which is public API in node v26.3.0 (fn.length === 3).
 // https://github.com/nodejs/node/blob/main/lib/internal/util/comparisons.js
-const { isDeepStrictEqual } = require("internal/util/comparisons");
+const { isDeepStrictEqual, isPartialStrictEqual } = require("internal/util/comparisons");
+
+function isPartialDeepStrictEqual(a, b) {
+  return isPartialStrictEqual(a, b);
+}
 
 const parseArgs = $bindgen("parse_args.bind.ts", "parseArgs");
 
@@ -797,6 +802,7 @@ var cjs_exports: UtilModule = {
     Object.defineProperty(cjs_exports, "inspect", { value, writable: true, enumerable: true, configurable: true });
   },
   isDeepStrictEqual,
+  isPartialDeepStrictEqual,
   promisify,
   setTraceSigInt,
   get stripVTControlCharacters() {

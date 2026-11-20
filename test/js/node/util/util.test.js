@@ -55,6 +55,29 @@ describe("util", () => {
       expect(util.toUSVString(strings[i])).toBe(outputs[i]);
     }
   });
+  it("isPartialDeepStrictEqual", () => {
+    const f = util.isPartialDeepStrictEqual;
+    expect([
+      f({ a: 1, b: 2 }, { a: 1 }),
+      f({ a: 1 }, { a: 1, b: 2 }),
+      f({ a: { b: 1, c: 2 } }, { a: { b: 1 } }),
+      f([1, 2, 3], [1, 3]),
+      f([1, 2, 3], [3, 1]),
+      f(new Set([1, 2]), new Set([2])),
+      f(1, "1"),
+      f({ a: 1 }, { a: "1" }),
+      f(
+        new Map([
+          [1, 2],
+          [3, 4],
+        ]),
+        new Map([[3, 4]]),
+      ),
+      f(),
+      f(NaN, NaN),
+    ]).toEqual([true, false, true, true, false, true, false, false, true, true, true]);
+    expect({ name: f.name, length: f.length }).toEqual({ name: "isPartialDeepStrictEqual", length: 2 });
+  });
   it("inherits", () => {
     function Bar() {}
     Bar.prototype.bar = function () {};
