@@ -25,6 +25,7 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionIsSetIterator,
     (JSC::JSGlobalObject * globalObject,
         JSC::CallFrame* callframe));
 
+JSC_DECLARE_HOST_FUNCTION(jsFunctionMarkPromiseAsHandled);
 JSC_DECLARE_HOST_FUNCTION(jsFunctionIsExternal);
 JSC_DECLARE_HOST_FUNCTION(jsFunctionIsDate);
 JSC_DECLARE_HOST_FUNCTION(jsFunctionIsArgumentsObject);

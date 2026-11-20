@@ -78,6 +78,39 @@ describe("util", () => {
     ]).toEqual([true, false, true, true, false, true, false, false, true, true, true]);
     expect({ name: f.name, length: f.length }).toEqual({ name: "isPartialDeepStrictEqual", length: 2 });
   });
+  it("markPromiseAsHandled validates its argument", () => {
+    const f = util.markPromiseAsHandled;
+    expect({ name: f.name, length: f.length }).toEqual({ name: "markPromiseAsHandled", length: 1 });
+    for (const input of [1, {}, { then() {} }]) {
+      expect(() => f(input)).toThrow(
+        expect.objectContaining({
+          name: "TypeError",
+          code: "ERR_INVALID_ARG_TYPE",
+          message: expect.stringContaining('The "promise" argument must be an instance of Promise. Received '),
+        }),
+      );
+    }
+  });
+  it("markPromiseAsHandled suppresses unhandledRejection", async () => {
+    await using proc = Bun.spawn({
+      cmd: [
+        bunExe(),
+        "-e",
+        `
+        const util = require("node:util");
+        process.on("unhandledRejection", () => console.log("unhandled"));
+        const p = Promise.reject(new Error("x"));
+        console.log(util.markPromiseAsHandled(p));
+        setImmediate(() => setImmediate(() => p.catch(e => console.log("caught", e.message))));
+        `,
+      ],
+      env: bunEnv,
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect(stdout).toBe("undefined\ncaught x\n");
+    expect(exitCode).toBe(0);
+  });
   it("inherits", () => {
     function Bar() {}
     Bar.prototype.bar = function () {};

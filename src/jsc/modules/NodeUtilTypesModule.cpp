@@ -875,6 +875,15 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionPartialDeepStrictEqual,
     return JSValue::encode(jsBoolean(result));
 }
 
+JSC_DEFINE_HOST_FUNCTION(jsFunctionMarkPromiseAsHandled,
+    (JSC::JSGlobalObject * globalObject,
+        JSC::CallFrame* callframe))
+{
+    if (auto* promise = dynamicDowncast<JSC::JSPromise>(callframe->argument(0)))
+        promise->markAsHandled();
+    return JSValue::encode(jsUndefined());
+}
+
 extern "C" bool Bun__deepEqualsNodeStrict(JSC::EncodedJSValue a, JSC::EncodedJSValue b, JSC::JSGlobalObject* globalObject);
 extern "C" bool Bun__deepEqualsNodeStrictSkipProto(JSC::EncodedJSValue a, JSC::EncodedJSValue b, JSC::JSGlobalObject* globalObject);
 

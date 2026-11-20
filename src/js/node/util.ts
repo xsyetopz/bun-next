@@ -46,6 +46,7 @@ interface UtilModule {
   inspect: InspectModule["inspect"];
   isDeepStrictEqual: typeof isDeepStrictEqual;
   isPartialDeepStrictEqual: typeof isPartialDeepStrictEqual;
+  markPromiseAsHandled: typeof markPromiseAsHandled;
   promisify: typeof promisify;
   setTraceSigInt: typeof setTraceSigInt;
   stripVTControlCharacters: InspectModule["stripVTControlCharacters"];
@@ -91,6 +92,13 @@ const { isDeepStrictEqual, isPartialStrictEqual } = require("internal/util/compa
 
 function isPartialDeepStrictEqual(a, b) {
   return isPartialStrictEqual(a, b);
+}
+
+const markAsHandled = $newCppFunction("NodeUtilTypesModule.cpp", "jsFunctionMarkPromiseAsHandled", 1);
+
+function markPromiseAsHandled(promise) {
+  if (!$isPromise(promise)) throw $ERR_INVALID_ARG_TYPE("promise", ["Promise"], promise);
+  markAsHandled(promise);
 }
 
 const parseArgs = $bindgen("parse_args.bind.ts", "parseArgs");
@@ -803,6 +811,7 @@ var cjs_exports: UtilModule = {
   },
   isDeepStrictEqual,
   isPartialDeepStrictEqual,
+  markPromiseAsHandled,
   promisify,
   setTraceSigInt,
   get stripVTControlCharacters() {
