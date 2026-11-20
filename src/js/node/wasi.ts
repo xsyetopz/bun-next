@@ -121,6 +121,7 @@ const WASI_ENOTDIR = 54;
 const WASI_ENOTEMPTY = 55;
 const WASI_ENOTRECOVERABLE = 56;
 const WASI_ENOTSOCK = 57;
+const WASI_ENOTSUP = 58;
 const WASI_ENOTTY = 59;
 const WASI_ENXIO = 60;
 const WASI_EOVERFLOW = 61;
@@ -176,6 +177,7 @@ const WASI_FDFLAG_DSYNC = 2;
 const WASI_FDFLAG_NONBLOCK = 4;
 const WASI_FDFLAG_RSYNC = 8;
 const WASI_FDFLAG_SYNC = 16;
+const WASI_SDFLAGS_WR = 2;
 const WASI_RIGHT_FD_DATASYNC = BigInt(1);
 const WASI_RIGHT_FD_READ = BigInt(2);
 const WASI_RIGHT_FD_SEEK = BigInt(4);
@@ -805,6 +807,7 @@ class WASI {
         return resolved;
       }
     };
+    const notSocket = (fd: number) => (this.FD_MAP.has(fd) ? WASI_ENOTCAPABLE : WASI_EBADF);
     const CPUTIME_START = Bun.nanoseconds();
     const timeOrigin = Math.trunc(performance.timeOrigin * 1e6);
     const now = (clockId: number) => {
@@ -1711,15 +1714,15 @@ class WASI {
       sched_yield() {
         return WASI_ESUCCESS;
       },
-      sock_recv() {
-        return WASI_ENOSYS;
-      },
-      sock_send() {
-        return WASI_ENOSYS;
-      },
-      sock_shutdown() {
-        return WASI_ENOSYS;
-      },
+      // Node.js cannot preopen sockets, so no descriptor carries socket rights.
+      // Flags are checked first, as uvwasi does.
+      sock_accept: (fd: number, flags: number, _fdPtr: number) =>
+        flags & ~WASI_FDFLAG_NONBLOCK ? WASI_ENOTSUP : notSocket(fd),
+      sock_recv: (fd: number, _riData: number, _riDataLen: number, riFlags: number) =>
+        riFlags !== 0 ? WASI_ENOTSUP : notSocket(fd),
+      sock_send: (fd: number, _siData: number, _siDataLen: number, siFlags: number) =>
+        siFlags !== 0 ? WASI_EINVAL : notSocket(fd),
+      sock_shutdown: (fd: number, how: number) => (how & ~WASI_SDFLAGS_WR ? WASI_ENOTSUP : notSocket(fd)),
       sock_fcntlSetFlags(_fd: number, _flags: number) {
         return WASI_ENOSYS;
       },

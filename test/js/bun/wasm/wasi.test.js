@@ -322,3 +322,37 @@ it("fd_pread counts each byte once and reads the next iov from where the last on
     second: memory.toString("latin1", secondBuf, secondBuf + 4),
   }).toEqual({ nread: 8, first: "2345", second: "6789" });
 });
+
+it("socket imports answer like Node.js, which cannot preopen sockets", () => {
+  const wasi = new WASI({ version: "preview1" });
+  wasi.setMemory(new WebAssembly.Memory({ initial: 1 }));
+  const { sock_accept, sock_recv, sock_send, sock_shutdown } = wasi.getImportObject().wasi_snapshot_preview1;
+  const [EBADF, EINVAL, ENOTSUP, ENOTCAPABLE] = [8, 28, 58, 76];
+  const NONBLOCK = 4;
+  const [SHUT_RD, SHUT_WR] = [1, 2];
+  const missing = 99;
+
+  expect({
+    acceptStdin: sock_accept(0, NONBLOCK, 0),
+    acceptMissing: sock_accept(missing, 0, 0),
+    acceptBadFlags: sock_accept(0, 1, 0),
+    recvStdin: sock_recv(0, 0, 0, 0, 0, 0),
+    recvBadFlags: sock_recv(0, 0, 0, 1, 0, 0),
+    sendStdout: sock_send(1, 0, 0, 0, 0),
+    sendBadFlags: sock_send(1, 0, 0, 1, 0),
+    shutdownWrite: sock_shutdown(1, SHUT_WR),
+    shutdownRead: sock_shutdown(1, SHUT_RD),
+    shutdownMissing: sock_shutdown(missing, SHUT_WR),
+  }).toEqual({
+    acceptStdin: ENOTCAPABLE,
+    acceptMissing: EBADF,
+    acceptBadFlags: ENOTSUP,
+    recvStdin: ENOTCAPABLE,
+    recvBadFlags: ENOTSUP,
+    sendStdout: ENOTCAPABLE,
+    sendBadFlags: EINVAL,
+    shutdownWrite: ENOTCAPABLE,
+    shutdownRead: ENOTSUP,
+    shutdownMissing: EBADF,
+  });
+});

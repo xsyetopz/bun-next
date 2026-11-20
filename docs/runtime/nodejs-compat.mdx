@@ -157,7 +157,7 @@ We update this page regularly. It reflects the latest version of Bun's compatibi
 
 ### [`node:wasi`](https://nodejs.org/api/wasi.html)
 
-🟡 Partially implemented. `WASI` supports `args`, `env`, `preopens`, `wasiImport` and `start()`, and `bun ./program.wasm` runs a WASI command directly. Missing `getImportObject()` (use `wasiImport`), `initialize()` and the `sock_accept` import. Bun ignores the `version`, `returnOnExit`, `stdin`, `stdout` and `stderr` options, so `proc_exit` exits the Bun process.
+🟢 Fully implemented. `bun ./program.wasm` runs a WASI command directly. `version` is optional in Bun; without it, the import namespace follows the module.
 
 ### [`node:worker_threads`](https://nodejs.org/api/worker_threads.html)
 
