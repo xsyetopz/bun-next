@@ -1667,6 +1667,42 @@ node:net.BlockList.prototype check("a", 1)
   throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received null <- null
 node:net.BlockList.prototype rules, read
   throws TypeError: The BlockList.rules getter can only be used on instances of BlockList <- every receiver
+node:net.BlockList.prototype toJSON()
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of Object <- {}, a proxy of {}
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received [Object: null prototype] {} <- an object without a prototype
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of Other <- an instance of another class
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of BlockList <- an heir of the prototype object, a proxy of such an heir, the prototype object
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received type number (7) <- a number
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received type string ('text') <- a string
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList <- undefined
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received null <- null
+node:net.BlockList.prototype toJSON("a", 1)
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of Object <- {}, a proxy of {}
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received [Object: null prototype] {} <- an object without a prototype
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of Other <- an instance of another class
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of BlockList <- an heir of the prototype object, a proxy of such an heir, the prototype object
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received type number (7) <- a number
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received type string ('text') <- a string
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList <- undefined
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received null <- null
+node:net.BlockList.prototype fromJSON()
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of Object <- {}, a proxy of {}
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received [Object: null prototype] {} <- an object without a prototype
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of Other <- an instance of another class
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of BlockList <- an heir of the prototype object, a proxy of such an heir, the prototype object
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received type number (7) <- a number
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received type string ('text') <- a string
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList <- undefined
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received null <- null
+node:net.BlockList.prototype fromJSON("a", 1)
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of Object <- {}, a proxy of {}
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received [Object: null prototype] {} <- an object without a prototype
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of Other <- an instance of another class
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received an instance of BlockList <- an heir of the prototype object, a proxy of such an heir, the prototype object
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received type number (7) <- a number
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received type string ('text') <- a string
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList <- undefined
+  throws TypeError ERR_INVALID_THIS: Expected this to be instanceof BlockList, but received null <- null
 node:net.SocketAddress.prototype address, read
   throws TypeError: The SocketAddress.address getter can only be used on instances of SocketAddress <- every receiver
 node:net.SocketAddress.prototype addrfamily, read

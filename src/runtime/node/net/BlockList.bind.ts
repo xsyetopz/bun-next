@@ -16,6 +16,8 @@ export const BlockList = b.class({
     addSubnet: { ...js, args: { network: b.any, prefix: b.any, family: b.any }, length: 2 },
     check: { ...js, args: { address: b.any, family: b.any }, returns: b.bool, length: 1 },
     rules: { ...js, getter: b.any.returning("Array") },
+    toJSON: { ...js, returns: b.any.returning("Array") },
+    fromJSON: { ...js, args: { data: b.any }, length: 1 },
   },
   static: {
     isBlockList: { args: { value: b.any }, returns: b.bool },

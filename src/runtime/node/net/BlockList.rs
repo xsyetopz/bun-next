@@ -1,7 +1,7 @@
 use core::cmp::Ordering;
 use core::sync::atomic::{AtomicU32, Ordering as AtomicOrdering};
 
-use bun_core::{String as BunString, ZStr};
+use bun_core::{String as BunString, ZStr, strings};
 use bun_jsc::bindgen::{JsLocal, JsScope};
 use bun_jsc::{CloneSerializer, JSGlobalObject, JSValue, JsResult, StringJsc as _};
 use bun_ptr::{RefPtr, ThisPtr};
@@ -93,8 +93,15 @@ impl BlockList {
         address: JsLocal<'_>,
         family: JsLocal<'_>,
     ) -> JsResult<()> {
-        let global = cx.global();
-        let (address_js, mut family_js) = (address.to_js(), family.to_js());
+        self.add_address_value(cx.global(), address.to_js(), family.to_js())
+    }
+
+    fn add_address_value(
+        &self,
+        global: &JSGlobalObject,
+        address_js: JSValue,
+        mut family_js: JSValue,
+    ) -> JsResult<()> {
         if family_js.is_undefined() {
             family_js = global.common_strings().ipv4_lower();
         }
@@ -111,8 +118,16 @@ impl BlockList {
         end: JsLocal<'_>,
         family: JsLocal<'_>,
     ) -> JsResult<()> {
-        let global = cx.global();
-        let (start_js, end_js, mut family_js) = (start.to_js(), end.to_js(), family.to_js());
+        self.add_range_value(cx.global(), start.to_js(), end.to_js(), family.to_js())
+    }
+
+    fn add_range_value(
+        &self,
+        global: &JSGlobalObject,
+        start_js: JSValue,
+        end_js: JSValue,
+        mut family_js: JSValue,
+    ) -> JsResult<()> {
         if family_js.is_undefined() {
             family_js = global.common_strings().ipv4_lower();
         }
@@ -138,9 +153,16 @@ impl BlockList {
         prefix: JsLocal<'_>,
         family: JsLocal<'_>,
     ) -> JsResult<()> {
-        let global = cx.global();
-        let (network_js, prefix_js, mut family_js) =
-            (network.to_js(), prefix.to_js(), family.to_js());
+        self.add_subnet_value(cx.global(), network.to_js(), prefix.to_js(), family.to_js())
+    }
+
+    fn add_subnet_value(
+        &self,
+        global: &JSGlobalObject,
+        network_js: JSValue,
+        prefix_js: JSValue,
+        mut family_js: JSValue,
+    ) -> JsResult<()> {
         if family_js.is_undefined() {
             family_js = global.common_strings().ipv4_lower();
         }
@@ -326,6 +348,151 @@ impl BlockList {
         }
         Ok(array)
     }
+
+    pub(crate) fn to_json(&self, cx: &mut JsScope<'_>) -> JsResult<JSValue> {
+        self.get_rules(cx)
+    }
+
+    /// Adds the rules that `rules` / `toJSON()` print, from that array or its JSON text.
+    /// Like Node.js, each entry is matched loosely and an entry that matches nothing is skipped.
+    pub(crate) fn from_json(&self, cx: &mut JsScope<'_>, data: JsLocal<'_>) -> JsResult<()> {
+        let global = cx.global();
+        let mut list = data.to_js();
+        if list.is_string() {
+            list = BunString::from_js(list, global)?.to_js_by_parse_json(global)?;
+        }
+        let invalid =
+            |value| global.throw_invalid_argument_type_value("data", "string or string[]", value);
+        if !list.is_array() {
+            return Err(invalid(list));
+        }
+        let mut items = Vec::new();
+        for i in 0..list.get_length(global)? {
+            let item = list.get_index(global, u32::try_from(i).expect("array index"))?;
+            if !item.is_string() {
+                return Err(invalid(list));
+            }
+            items.push(item.to_utf8(global)?);
+        }
+
+        let text = |bytes: &[u8]| BunString::clone_utf8(bytes).into_js(global);
+        let number = |digits: &[u8]| {
+            JSValue::js_number(
+                digits
+                    .iter()
+                    .fold(0.0, |n, d| n * 10.0 + f64::from(d - b'0')),
+            )
+        };
+        let ipv4 = global.common_strings().ipv4_lower();
+        let ipv6 = global.common_strings().ipv6_lower();
+        for item in &items {
+            let item: &[u8] = item;
+            if strings::contains(item, b"IPv4") {
+                if let Some((network, prefix)) = find(item, item, b"Subnet: IPv4 ", |s| {
+                    let n = ipv4_run(s, Some(b'/'))?;
+                    let p = run(&s[n + 1..], is_digit, 2, None)?;
+                    Some((&s[..n], &s[n + 1..n + 1 + p]))
+                }) {
+                    self.add_subnet_value(global, text(network)?, number(prefix), ipv4)?;
+                    continue;
+                }
+                if let Some(address) = find(item, item, b"Address: IPv4 ", |s| {
+                    Some(&s[..ipv4_run(s, None)?])
+                }) {
+                    self.add_address_value(global, text(address)?, ipv4)?;
+                    continue;
+                }
+                if let Some((start, end)) = find(item, item, b"Range: IPv4 ", |s| {
+                    let n = ipv4_run(s, Some(b'-'))?;
+                    let m = ipv4_run(&s[n + 1..], None)?;
+                    Some((&s[..n], &s[n + 1..n + 1 + m]))
+                }) {
+                    self.add_range_value(global, text(start)?, text(end)?, ipv4)?;
+                    continue;
+                }
+            }
+            if strings::contains(item, b"IPv6") {
+                // Node.js matches these labels case-insensitively.
+                let lower = item.to_ascii_lowercase();
+                if let Some((network, prefix)) = find(item, &lower, b"subnet: ipv6 ", |s| {
+                    let n = run(s, is_ipv6_char, 45, Some(b'/'))?;
+                    let p = run(&s[n + 1..], is_digit, 3, None)?;
+                    Some((&s[..n], &s[n + 1..n + 1 + p]))
+                }) {
+                    self.add_subnet_value(global, text(network)?, number(prefix), ipv6)?;
+                    continue;
+                }
+                if let Some(address) = find(item, &lower, b"address: ipv6 ", |s| {
+                    Some(&s[..run(s, is_ipv6_char, 45, None)?])
+                }) {
+                    self.add_address_value(global, text(address)?, ipv6)?;
+                    continue;
+                }
+                if let Some((start, end)) = find(item, &lower, b"range: ipv6 ", |s| {
+                    let n = run(s, is_ipv6_char, 45, Some(b'-'))?;
+                    let m = run(&s[n + 1..], is_ipv6_char, 45, None)?;
+                    Some((&s[..n], &s[n + 1..n + 1 + m]))
+                }) {
+                    self.add_range_value(global, text(start)?, text(end)?, ipv6)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+fn is_digit(b: u8) -> bool {
+    b.is_ascii_digit()
+}
+
+fn is_ipv6_char(b: u8) -> bool {
+    b.is_ascii_hexdigit() || b == b':' || b == b'.'
+}
+
+/// The length of the run of 1 to `max` bytes in `class` that starts `s`, as the
+/// regex `[class]{1,max}` followed by `next` matches it. `next` is never in
+/// `class`, so a longer run cannot be cut short to reach it.
+fn run(s: &[u8], class: fn(u8) -> bool, max: usize, next: Option<u8>) -> Option<usize> {
+    let n = s.iter().take_while(|&&b| class(b)).count();
+    match next {
+        None => (n > 0).then_some(n.min(max)),
+        Some(next) => ((1..=max).contains(&n) && s.get(n) == Some(&next)).then_some(n),
+    }
+}
+
+/// `\d{1,3}(?:\.\d{1,3}){3}` followed by `next`, as [`run`] matches it.
+fn ipv4_run(s: &[u8], next: Option<u8>) -> Option<usize> {
+    let mut at = 0;
+    for octet in 0..4 {
+        at += run(
+            &s[at..],
+            is_digit,
+            3,
+            if octet < 3 { Some(b'.') } else { next },
+        )?;
+        if octet < 3 {
+            at += 1;
+        }
+    }
+    Some(at)
+}
+
+/// The leftmost match of `label` in `haystack` that `rest` accepts. `rest` reads
+/// `item` from just after the label; `haystack` is `item` or its lowercase copy.
+fn find<'a, T>(
+    item: &'a [u8],
+    haystack: &[u8],
+    label: &[u8],
+    rest: impl Fn(&'a [u8]) -> Option<T>,
+) -> Option<T> {
+    let mut from = 0;
+    while let Some(i) = strings::index_of(&haystack[from..], label) {
+        if let Some(found) = rest(&item[from + i + label.len()..]) {
+            return Some(found);
+        }
+        from += i + 1;
+    }
+    None
 }
 
 /// Adds the entry that [`BlockList__onStructuredCloneDestroy`] removes.

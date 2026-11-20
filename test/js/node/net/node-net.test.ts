@@ -131,6 +131,55 @@ describe("net.BlockList subnet rules", () => {
   });
 });
 
+describe("net.BlockList toJSON and fromJSON", () => {
+  it("toJSON() returns the rules", () => {
+    const blockList = new BlockList();
+    blockList.addAddress("1.2.3.4");
+    blockList.addSubnet("2001:db8::", 32, "ipv6");
+    expect(blockList.toJSON()).toEqual(["Subnet: IPv6 2001:db8::/32", "Address: IPv4 1.2.3.4"]);
+    expect(JSON.parse(JSON.stringify(blockList))).toEqual(blockList.rules);
+  });
+
+  it("fromJSON() adds each rule, from an array or its JSON text", () => {
+    const rules = [
+      "Address: IPv4 1.2.3.4",
+      "Range: IPv4 10.0.0.1-10.0.0.9",
+      "Subnet: IPv4 192.168.0.0/16",
+      "Address: IPv6 ::1",
+      "RANGE: IPv6 fe80::1-fe80::9",
+      "Subnet: IPv6 2001:db8::/32",
+      "not a rule",
+    ];
+    const fromArray = new BlockList();
+    fromArray.fromJSON(rules);
+    const fromText = new BlockList();
+    fromText.fromJSON(JSON.stringify(rules));
+    const expected = [
+      "Subnet: IPv6 2001:db8::/32",
+      "Range: IPv6 fe80::1-fe80::9",
+      "Address: IPv6 ::1",
+      "Subnet: IPv4 192.168.0.0/16",
+      "Range: IPv4 10.0.0.1-10.0.0.9",
+      "Address: IPv4 1.2.3.4",
+    ];
+    expect([fromArray.rules, fromText.rules]).toEqual([expected, expected]);
+    expect(fromArray.check("10.0.0.5")).toBe(true);
+    expect(fromArray.check("192.168.4.4")).toBe(true);
+    expect(fromArray.check("2001:db8::7", "ipv6")).toBe(true);
+    expect(fromArray.check("10.0.0.10")).toBe(false);
+  });
+
+  it("fromJSON() rejects anything but strings, before adding any rule", () => {
+    const blockList = new BlockList();
+    for (const data of [1, {}, "{}", ["Address: IPv4 1.2.3.4", 5]]) {
+      expect(() => blockList.fromJSON(data)).toThrow(
+        expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE", name: "TypeError" }),
+      );
+    }
+    expect(blockList.rules).toEqual([]);
+  });
+});
+
 describe("net.BlockList and an IPv6 zone id", () => {
   it("check() matches on the address alone", () => {
     const blockList = new BlockList();
