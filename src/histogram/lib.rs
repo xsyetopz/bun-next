@@ -102,6 +102,26 @@ impl Histogram {
         self.record_n(value, 1)
     }
 
+    /// Whether `value` was counted. If it was, so are the values that recording every `interval` would have
+    /// counted before it had nothing stalled: `value - interval`, `value - 2 * interval` and so on, down to
+    /// `interval`. `interval` is not 0.
+    ///
+    /// Node.js: records those one at a time, so it takes as long as `value / interval`.
+    pub fn record_corrected(&mut self, value: u64, interval: u64) -> bool {
+        if !self.record(value) {
+            return false;
+        }
+        let mut missing = value.saturating_sub(interval);
+        while missing >= interval {
+            // All of the missing values in the slot of `missing` at once.
+            let lowest = self.slot(self.index_of(missing)).lowest.max(interval);
+            let n = (missing - lowest) / interval + 1;
+            self.record_n(missing, n);
+            missing -= n * interval;
+        }
+        true
+    }
+
     fn record_n(&mut self, value: u64, n: u64) -> bool {
         if value <= self.highest_trackable_value
             && let Some(count) = self.count.checked_add(n)

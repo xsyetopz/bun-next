@@ -214,6 +214,51 @@ describe("Histogram", () => {
     });
   });
 
+  describe("recordCorrected", () => {
+    test("backfills the values that a stall kept from being recorded", () => {
+      const h = createHistogram();
+      (h as any).recordCorrected(100, 10);
+      (h as any).recordCorrected(5n, 10n);
+      assert.deepStrictEqual([h.count, h.min, h.max, h.mean, h.countAt(30)], [11, 5, 100, 50.45454545454545, 1]);
+    });
+
+    test("does not backfill a value that exceeds the range", () => {
+      const h = createHistogram({ highest: 100 });
+      (h as any).recordCorrected(1000, 10);
+      assert.deepStrictEqual([h.count, h.exceeds], [0, 1]);
+    });
+
+    test("backfills many values without recording each", notInNode, () => {
+      const h = createHistogram();
+      (h as any).recordCorrected(2 ** 52, 1);
+      assert.deepStrictEqual([h.count, h.min, h.countAt(2 ** 40)], [2 ** 52, 1, 2 ** 40 / 1024]);
+    });
+
+    test("validates its arguments", () => {
+      const h = createHistogram();
+      for (const args of [
+        [-1, 10],
+        [-1n, 10n],
+        [0, 0],
+        [0n, 0n],
+        [1.5, 1],
+        [2n ** 63n, 1n],
+      ]) {
+        assert.throws(() => (h as any).recordCorrected(...args), { code: "ERR_OUT_OF_RANGE" });
+      }
+      for (const args of [
+        [1n, 1],
+        [1, 1n],
+        ["1", 1],
+        [1, undefined],
+      ]) {
+        assert.throws(() => (h as any).recordCorrected(...args), { code: "ERR_INVALID_ARG_TYPE" });
+      }
+      assert.throws(() => (h as any).recordCorrected.call({}, 1, 1), { code: "ERR_INVALID_THIS" });
+      assert.strictEqual(h.count, 0);
+    });
+  });
+
   describe("snapshot and diff", () => {
     test("a snapshot is a read-only Histogram that recording does not change", () => {
       const h = createHistogram();
@@ -1491,6 +1536,7 @@ describe("Histogram", () => {
         "RecordableHistogram/0",
         "add/1",
         "record/1",
+        "recordCorrected/2",
         "recordDelta/0",
         "subtract/1",
       ]);

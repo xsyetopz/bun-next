@@ -73,6 +73,13 @@ export const RecordableHistogram = b.class({
   extends: Histogram,
   proto: {
     record: { args: { val: b.any }, length: 1, passThis: true, capability: "js", throws: true },
+    recordCorrected: {
+      ...grows,
+      args: { val: b.any, expectedInterval: b.any },
+      length: 2,
+      capability: "js",
+      throws: true,
+    },
     recordDelta: grows,
     add: { ...grows, args: { other: b.self }, expected: { other: ["RecordableHistogram"] } },
     subtract: { args: { other: b.self }, expected: { other: ["RecordableHistogram"] } },

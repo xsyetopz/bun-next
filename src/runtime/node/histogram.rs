@@ -9,7 +9,7 @@ use std::sync::Arc;
 use bun_core::fmt::{NodeNumber, OutOfRangeOptions, double, out_of_range};
 use bun_core::{Timespec, TimespecMockMode};
 use bun_jsc::bindgen::{self, JsHeap, JsLocal, JsPayload as _, JsScope, JsWrapper, to_js};
-use bun_jsc::{ErrorCode, JSBigInt, JSGlobalObject, JSMap, JSValue, JsResult, MAX_SAFE_INTEGER};
+use bun_jsc::{ErrorCode, JSGlobalObject, JSMap, JSValue, JsResult, MAX_SAFE_INTEGER};
 use bun_threading::Guarded;
 
 use crate::generated_bindgen::histogram::{HistogramJSON, js_ELDHistogram, js_RecordableHistogram};
@@ -383,25 +383,47 @@ impl Histogram {
         val: JsLocal<'a>,
     ) -> bindgen::Result<'a, ()> {
         let val = val.to_js();
-        let big_int = if val.is_number() {
-            None
-        } else {
-            JSBigInt::from_js(val)
-        };
-        let value = if let Some(big_int) = big_int {
-            if !val.is_big_int_in_int64_range(0, i64::MAX) {
-                // https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc#L181
-                return Err(cx.heap.error_with_code(
-                    ErrorCode::OUT_OF_RANGE,
-                    format_args!("value is out of range"),
-                ));
-            }
-            big_int.to_int64() as u64
+        let value = if val.is_big_int() {
+            big_int_in_range(&cx.heap, val, 0, "value")?
         } else {
             validators::validate_integer(cx.global(), val, "val", Some(0), Some(MAX_SAFE_INTEGER))?
                 as u64
         };
         let (_, grown) = self.with(|state| state.histogram.record(value));
+        Self::report_growth(&cx.heap, this_value, grown);
+        Ok(())
+    }
+
+    pub(crate) fn record_corrected<'a>(
+        &self,
+        this_value: JsWrapper<'a, Self>,
+        cx: &mut JsScope<'a>,
+        val: JsLocal<'a>,
+        expected_interval: JsLocal<'a>,
+    ) -> bindgen::Result<'a, ()> {
+        let (val, interval) = (val.to_js(), expected_interval.to_js());
+        let (value, interval) = if val.is_big_int() {
+            if !interval.is_big_int() {
+                let global = cx.global();
+                Err(global.throw_invalid_argument_type_value(
+                    "expectedInterval",
+                    "bigint",
+                    interval,
+                ))?;
+            }
+            let value = big_int_in_range(&cx.heap, val, 0, "value")?;
+            (
+                value,
+                big_int_in_range(&cx.heap, interval, 1, "expected_interval")?,
+            )
+        } else {
+            let global = cx.global();
+            let value = validators::validate_integer(global, val, "val", Some(0), None)?;
+            let interval =
+                validators::validate_integer(global, interval, "expectedInterval", Some(1), None)?;
+            (value as u64, interval as u64)
+        };
+        let (_, grown) = self.with(|state| state.histogram.record_corrected(value, interval));
         Self::report_growth(&cx.heap, this_value, grown);
         Ok(())
     }
@@ -465,6 +487,23 @@ impl Histogram {
             }
         }
     }
+}
+
+/// `value`, a BigInt, if it is at least `min` and fits in an `i64`.
+fn big_int_in_range<'a>(
+    heap: &JsHeap<'a>,
+    value: JSValue,
+    min: i64,
+    name: &str,
+) -> bindgen::Result<'a, u64> {
+    if !value.is_big_int_in_int64_range(min, i64::MAX) {
+        // https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc#L181
+        return Err(heap.error_with_code(
+            ErrorCode::OUT_OF_RANGE,
+            format_args!("{name} is out of range"),
+        ));
+    }
+    Ok(value.to_int64() as u64)
 }
 
 /// `ELDHistogram`
