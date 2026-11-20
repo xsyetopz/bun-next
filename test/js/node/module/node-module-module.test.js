@@ -4,6 +4,7 @@ import fs from "fs";
 import { bunEnv, bunExe, isWindows, normalizeBunSnapshot, ospath, tempDir } from "harness";
 import Module, { _nodeModulePaths, builtinModules, createRequire, isBuiltin, wrap } from "module";
 import path from "path";
+import { pathToFileURL } from "url";
 import storesThatEndInADefinition from "../../bun/jsc/stores-that-end-in-a-definition-fixture.js";
 
 const storesFixture = path.join(
@@ -46,6 +47,53 @@ describe.concurrent("node-module-module", () => {
       "bun:test": true,
       "bun:node:fs": false,
       "bun:bacon": false,
+    });
+  });
+
+  test("findPackageJSON() finds a package's package.json or the one nearest a path", () => {
+    using dir = tempDir("find-package-json", {
+      "package.json": JSON.stringify({ name: "app", exports: "./src/index.js" }),
+      "src/index.js": "",
+      "node_modules/dep/package.json": "{}",
+      "node_modules/dep/lib/x.js": "",
+      "node_modules/@scope/pkg/package.json": "{}",
+      "broken/package.json": "{",
+      "broken/x.js": "",
+    });
+    const root = fs.realpathSync(String(dir));
+    const from = path.join(root, "src", "index.js");
+    const code = fn => {
+      try {
+        return fn();
+      } catch (err) {
+        return err.code;
+      }
+    };
+    const { findPackageJSON } = Module;
+    expect({
+      bare: findPackageJSON("dep", from),
+      scopedSubpath: findPackageJSON("@scope/pkg/sub", pathToFileURL(from)),
+      self: findPackageJSON("app", from),
+      relative: findPackageJSON("./index.js", from),
+      insideDependency: findPackageJSON("../node_modules/dep/lib/x.js", from),
+      absoluteURL: findPackageJSON(pathToFileURL(from).href),
+      missingPackage: code(() => findPackageJSON("nope", from)),
+      missingFile: code(() => findPackageJSON("./nope.js", from)),
+      invalidName: code(() => findPackageJSON("%dep", from)),
+      invalidConfig: code(() => findPackageJSON("./broken/x.js", path.join(root, "x.js"))),
+      noArgs: code(() => findPackageJSON()),
+    }).toEqual({
+      bare: path.join(root, "node_modules", "dep", "package.json"),
+      scopedSubpath: path.join(root, "node_modules", "@scope", "pkg", "package.json"),
+      self: path.join(root, "package.json"),
+      relative: path.join(root, "package.json"),
+      insideDependency: path.join(root, "node_modules", "dep", "package.json"),
+      absoluteURL: path.join(root, "package.json"),
+      missingPackage: "ERR_MODULE_NOT_FOUND",
+      missingFile: "ERR_MODULE_NOT_FOUND",
+      invalidName: "ERR_INVALID_MODULE_SPECIFIER",
+      invalidConfig: "ERR_INVALID_PACKAGE_CONFIG",
+      noArgs: "ERR_MISSING_ARGS",
     });
   });
 

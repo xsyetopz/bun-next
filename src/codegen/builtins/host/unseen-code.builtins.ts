@@ -78,6 +78,7 @@ const seenCodeEntries = [
   "node:module._pathCache",
   "node:module._resolveLookupPaths",
   "node:module.constants",
+  "node:module.findPackageJSON",
   "node:module.globalPaths",
   "process.binding",
 ];

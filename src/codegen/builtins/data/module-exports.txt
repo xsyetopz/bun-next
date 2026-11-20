@@ -40,7 +40,7 @@ node:http2 ClientHttp2Session Http2ServerRequest Http2ServerResponse connect con
 node:https Agent Server createServer default get globalAgent request
 node:inspector Session close console default open url waitForDebugger
 node:inspector/promises Session close console default open url waitForDebugger
-node:module=function Module SourceMap _cache _debug _extensions _findPath _initPaths _load _nodeModulePaths _pathCache _preloadModules _resolveFilename _resolveLookupPaths _stat builtinModules constants createRequire default enableCompileCache findSourceMap flushCompileCache getCompileCacheDir globalPaths isBuiltin register runMain syncBuiltinESMExports wrap wrapper=namespace
+node:module=function Module SourceMap _cache _debug _extensions _findPath _initPaths _load _nodeModulePaths _pathCache _preloadModules _resolveFilename _resolveLookupPaths _stat builtinModules constants createRequire default enableCompileCache findPackageJSON findSourceMap flushCompileCache getCompileCacheDir globalPaths isBuiltin register runMain syncBuiltinESMExports wrap wrapper=namespace
 node:net BlockList Server Socket SocketAddress Stream _normalizeArgs _setSimultaneousAccepts connect createConnection createServer default getDefaultAutoSelectFamily getDefaultAutoSelectFamilyAttemptTimeout isIP isIPv4 isIPv6 setDefaultAutoSelectFamily setDefaultAutoSelectFamilyAttemptTimeout
 node:os EOL arch availableParallelism constants cpus default devNull endianness freemem getPriority homedir hostname loadavg machine networkInterfaces platform release setPriority tmpdir totalmem type uptime userInfo version
 node:path _makeLong basename default delimiter dirname extname format isAbsolute join matchesGlob normalize parse posix relative resolve sep toNamespacedPath win32

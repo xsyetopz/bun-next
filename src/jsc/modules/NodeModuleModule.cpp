@@ -991,6 +991,7 @@ builtinModules          getBuiltinModulesObject           PropertyCallback
 constants               getConstantsObject                PropertyCallback
 createRequire           jsFunctionNodeModuleCreateRequire Function 1
 enableCompileCache      jsFunctionEnableCompileCache      Function 1
+findPackageJSON         JSBuiltin                         Function|Builtin 1
 findSourceMap           Bun::Bindgen::Generated::Sourcemap::jsFindSourceMap Function 1
 flushCompileCache       jsFunctionFlushCompileCache       Function 0
 getCompileCacheDir      jsFunctionGetCompileCacheDir      Function 0
