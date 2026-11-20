@@ -3,7 +3,7 @@
 //! https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc
 
 use crate::Histogram;
-use crate::beta::Beta;
+use crate::beta::{Beta, clamp};
 
 /// Which slots `qrde()` spreads the values of over the range of the slot rather than taking them at its middle.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -135,7 +135,7 @@ impl Ranges<'_> {
     fn quantile(&self, total: u64, p: f64, highest: f64) -> f64 {
         let count = total as f64;
         let (a, b) = ((count + 1.0) * p, (count + 1.0) * (1.0 - p));
-        let mass = Beta::new(a, b);
+        let mass = Beta::approximate(a, b);
         let reflected = mass.reflected();
 
         let (mut previous_cdf, mut previous_survival, mut previous_front) = (0.0, 0.0, 0.0);
@@ -192,16 +192,5 @@ impl Ranges<'_> {
             1.0 - previous_cdf
         };
         quantile + highest * clamp(remaining, 0.0, 1.0)
-    }
-}
-
-/// `std::clamp`, which passes NaN through, as `f64::clamp` does but without its panic for bounds out of order.
-fn clamp(value: f64, low: f64, high: f64) -> f64 {
-    if value < low {
-        low
-    } else if high < value {
-        high
-    } else {
-        value
     }
 }
