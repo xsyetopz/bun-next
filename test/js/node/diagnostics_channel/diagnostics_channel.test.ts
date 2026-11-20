@@ -9,6 +9,7 @@ import {
   Channel,
   hasSubscribers,
   subscribe,
+  tracingChannel,
   unsubscribe,
 } from "node:diagnostics_channel";
 
@@ -499,6 +500,19 @@ describe("TracingChannel", () => {
   // Port tests from:
   // https://github.com/search?q=repo%3Anodejs%2Fnode+test-diagnostics-channel+AND+%2Ftracing%2F&type=code
   test.todo("TODO");
+
+  test.each(["start", "end", "asyncStart", "asyncEnd", "error"])(
+    "hasSubscribers is true while %s has a subscriber",
+    event => {
+      const tracing = tracingChannel(`test:has-subscribers:${event}`);
+      const handlers = { [event]: () => {} };
+      expect(tracing.hasSubscribers).toBe(false);
+      tracing.subscribe(handlers);
+      expect(tracing.hasSubscribers).toBe(true);
+      tracing.unsubscribe(handlers);
+      expect(tracing.hasSubscribers).toBe(false);
+    },
+  );
 });
 
 describe("BoundedChannel", () => {
