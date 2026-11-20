@@ -81,6 +81,7 @@ const seenCodeEntries = [
   "node:module.constants",
   "node:module.findPackageJSON",
   "node:module.globalPaths",
+  "node:module.setSourceMapsSupport",
   "process.binding",
 ];
 

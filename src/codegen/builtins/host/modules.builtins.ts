@@ -511,6 +511,13 @@ export default b.declarations(
     uses: { script: [b.runs("ToPrimitive")] },
     implementation: b.generic,
   }),
+  // The same frozen object until the setting changes; the first read builds it from execArgv.
+  b.fn("node:module.getSourceMapsSupport", {
+    returns: b.object,
+    capability: "heap",
+    reads: externalState,
+    implementation: b.generic,
+  }),
   b.fn("node:module.findSourceMap", {
     args: { path: b.any.optional },
     returns: b.union(b.instance("SourceMap"), b.undefined).fresh,

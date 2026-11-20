@@ -38,6 +38,8 @@ class Process : public WebCore::JSEventEmitter {
     WriteBarrier<JSObject> m_onWarning;
     // A function of the library: it hands native code what it kept for a tick. No tick runs once the process exits.
     WriteBarrier<JSObject> m_runsWhenProcessExits;
+    // module.getSourceMapsSupport()'s frozen { enabled, nodeModules, generatedCode }, made from execArgv on the first read.
+    WriteBarrier<JSObject> m_sourceMapsSupport;
 
     void installDefaultWarningListener(JSC::VM&);
 
@@ -58,7 +60,6 @@ public:
     ~Process();
 
     bool m_isExitCodeObservable = false;
-    bool m_sourceMapsEnabled = false;
     // Node's per-Environment EmitProcessEnvWarning one-shot for DEP0104.
     bool m_emitEnvNonstringWarning = true;
     // Re-entry guard for dispatchExitInternal. Per-Process (i.e. per-VM): a
@@ -141,6 +142,10 @@ public:
     {
         return m_uncaughtExceptionAuxiliaryCallbacks.get();
     }
+
+    // The setting is reported, not applied: Bun maps the code it transpiles to its sources either way.
+    JSC::JSObject* sourceMapsSupport(JSC::JSGlobalObject*);
+    JSC::JSObject* setSourceMapsSupport(JSC::JSGlobalObject*, bool enabled, bool nodeModules, bool generatedCode);
 
     inline void setRunsWhenProcessExits(JSC::JSObject* function)
     {

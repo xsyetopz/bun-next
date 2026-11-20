@@ -4924,6 +4924,7 @@ void Process::visitChildrenImpl(JSCell* cell, Visitor& visitor)
     Base::visitChildren(thisObject, visitor);
     visitor.append(thisObject->m_uncaughtExceptionCaptureCallback);
     visitor.append(thisObject->m_uncaughtExceptionAuxiliaryCallbacks);
+    visitor.append(thisObject->m_sourceMapsSupport);
     visitor.append(thisObject->m_nextTickFunction);
     visitor.append(thisObject->m_cachedCwd);
     visitor.append(thisObject->m_onWarning);
@@ -5530,8 +5531,60 @@ JSC_DEFINE_HOST_FUNCTION(Process_setSourceMapsEnabled, (JSC::JSGlobalObject * le
         return Bun::ERR::INVALID_ARG_TYPE(scope, globalObject, "enabled"_s, "boolean"_s, arg0);
     }
 
-    globalObject->processObject()->m_sourceMapsEnabled = arg0.toBoolean(globalObject);
+    bool enabled = arg0.isTrue();
+    globalObject->processObject()->setSourceMapsSupport(globalObject, enabled, enabled, enabled);
+    RETURN_IF_EXCEPTION(scope, {});
     return JSValue::encode(jsUndefined());
+}
+
+JSC_DEFINE_CUSTOM_GETTER(processSourceMapsEnabled, (JSC::JSGlobalObject * lexicalGlobalObject, JSC::EncodedJSValue thisValue, JSC::PropertyName))
+{
+    auto* globalObject = defaultGlobalObject(lexicalGlobalObject);
+    auto& vm = JSC::getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSObject* support = globalObject->processObject()->sourceMapsSupport(globalObject);
+    RETURN_IF_EXCEPTION(scope, {});
+    RELEASE_AND_RETURN(scope, JSValue::encode(support->getDirect(vm, Identifier::fromString(vm, "enabled"_s))));
+}
+
+JSObject* Process::sourceMapsSupport(JSGlobalObject* globalObject)
+{
+    if (JSObject* support = m_sourceMapsSupport.get())
+        return support;
+    auto& vm = JSC::getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSValue execArgv = JSValue::decode(Bun__Process__createExecArgv(globalObject));
+    RETURN_IF_EXCEPTION(scope, nullptr);
+    bool enabled = false;
+    if (auto* flags = dynamicDowncast<JSArray>(execArgv)) {
+        for (unsigned i = 0, length = flags->length(); i < length; i++) {
+            JSValue flag = flags->getIndex(globalObject, i);
+            RETURN_IF_EXCEPTION(scope, nullptr);
+            if (!flag.isString())
+                continue;
+            String text = asString(flag)->value(globalObject);
+            RETURN_IF_EXCEPTION(scope, nullptr);
+            if (text == "--enable-source-maps"_s)
+                enabled = true;
+            else if (text == "--no-enable-source-maps"_s)
+                enabled = false;
+        }
+    }
+    RELEASE_AND_RETURN(scope, setSourceMapsSupport(globalObject, enabled, enabled, enabled));
+}
+
+JSObject* Process::setSourceMapsSupport(JSGlobalObject* globalObject, bool enabled, bool nodeModules, bool generatedCode)
+{
+    auto& vm = JSC::getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSObject* support = JSC::constructEmptyObject(vm, globalObject->nullPrototypeObjectStructure());
+    support->putDirect(vm, Identifier::fromString(vm, "enabled"_s), jsBoolean(enabled));
+    support->putDirect(vm, Identifier::fromString(vm, "nodeModules"_s), jsBoolean(nodeModules));
+    support->putDirect(vm, Identifier::fromString(vm, "generatedCode"_s), jsBoolean(generatedCode));
+    objectConstructorFreeze(globalObject, support);
+    RETURN_IF_EXCEPTION(scope, nullptr);
+    m_sourceMapsSupport.set(vm, this, support);
+    return support;
 }
 
 JSC_DEFINE_HOST_FUNCTION(Process_stubFunctionReturningArray, (JSGlobalObject * globalObject, CallFrame* callFrame))
@@ -6312,6 +6365,7 @@ extern "C" void Process__emitErrorEvent(Zig::GlobalObject* global, EncodedJSValu
   revision                         constructRevision                                   PropertyCallback
   send                             constructProcessSend                                PropertyCallback
   setSourceMapsEnabled             Process_setSourceMapsEnabled                           Function 1
+  sourceMapsEnabled                processSourceMapsEnabled                            ReadOnly|CustomAccessor
   setUncaughtExceptionCaptureCallback Process_setUncaughtExceptionCaptureCallback      Function 1
   stderr                           constructStderr                                     PropertyCallback
   stdin                            constructStdin                                      PropertyCallback

@@ -22,6 +22,8 @@
 
 #include "PathInlines.h"
 #include "ZigGlobalObject.h"
+#include "BunProcess.h"
+#include "NodeValidator.h"
 #include "headers.h"
 #include "ErrorCode.h"
 #include "VectorSizeLimit.h"
@@ -979,6 +981,46 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionFlushCompileCache,
     return JSC::JSValue::encode(JSC::jsUndefined());
 }
 
+JSC_DEFINE_HOST_FUNCTION(jsFunctionGetSourceMapsSupport, (JSGlobalObject * lexicalGlobalObject, JSC::CallFrame*))
+{
+    auto* globalObject = defaultGlobalObject(lexicalGlobalObject);
+    return JSValue::encode(globalObject->processObject()->sourceMapsSupport(globalObject));
+}
+
+// https://github.com/nodejs/node/blob/v26.13.1/lib/internal/source_map/source_map_cache.js#L72
+JSC_DEFINE_HOST_FUNCTION(jsFunctionSetSourceMapsSupport, (JSGlobalObject * lexicalGlobalObject, JSC::CallFrame* callFrame))
+{
+    auto* globalObject = defaultGlobalObject(lexicalGlobalObject);
+    auto& vm = JSC::getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+    JSValue enabled = callFrame->argument(0);
+    Bun::V::validateBoolean(scope, globalObject, enabled, "enabled"_s);
+    RETURN_IF_EXCEPTION(scope, {});
+    JSValue options = callFrame->argument(1);
+    JSValue nodeModules = jsBoolean(false);
+    JSValue generatedCode = jsBoolean(false);
+    if (!options.isUndefined()) {
+        Bun::V::validateObject(scope, globalObject, options, "options"_s);
+        RETURN_IF_EXCEPTION(scope, {});
+        JSObject* object = asObject(options);
+        nodeModules = object->get(globalObject, Identifier::fromString(vm, "nodeModules"_s));
+        RETURN_IF_EXCEPTION(scope, {});
+        generatedCode = object->get(globalObject, Identifier::fromString(vm, "generatedCode"_s));
+        RETURN_IF_EXCEPTION(scope, {});
+        if (nodeModules.isUndefined())
+            nodeModules = jsBoolean(false);
+        if (generatedCode.isUndefined())
+            generatedCode = jsBoolean(false);
+        Bun::V::validateBoolean(scope, globalObject, nodeModules, "options.nodeModules"_s);
+        RETURN_IF_EXCEPTION(scope, {});
+        Bun::V::validateBoolean(scope, globalObject, generatedCode, "options.generatedCode"_s);
+        RETURN_IF_EXCEPTION(scope, {});
+    }
+    globalObject->processObject()->setSourceMapsSupport(globalObject, enabled.isTrue(), nodeModules.isTrue(), generatedCode.isTrue());
+    RETURN_IF_EXCEPTION(scope, {});
+    return JSValue::encode(jsUndefined());
+}
+
 static JSValue getModuleObject(VM& vm, JSObject* moduleObject)
 {
     return moduleObject;
@@ -1006,6 +1048,7 @@ findPackageJSON         JSBuiltin                         Function|Builtin 1
 findSourceMap           Bun::Bindgen::Generated::Sourcemap::jsFindSourceMap Function 1
 flushCompileCache       jsFunctionFlushCompileCache       Function 0
 getCompileCacheDir      jsFunctionGetCompileCacheDir      Function 0
+getSourceMapsSupport    jsFunctionGetSourceMapsSupport    Function 0
 globalPaths             getGlobalPathsObject              PropertyCallback
 isBuiltin               jsFunctionIsBuiltinModule         Function 1
 isPreloading            nodeModuleIsPreloading            DontEnum|DontDelete|ReadOnly|CustomAccessor
@@ -1013,6 +1056,7 @@ prototype               getModulePrototypeObject          DontEnum|DontDelete|Pr
 register                jsFunctionRegister                Function 1
 runMain                 moduleRunMain                        CustomAccessor
 SourceMap               Bun::Bindgen::Generated::Sourcemap::getSourceMapConstructor PropertyCallback
+setSourceMapsSupport    jsFunctionSetSourceMapsSupport    Function 1
 syncBuiltinESMExports   jsFunctionSyncBuiltinESMExports   Function 0
 wrap                    jsFunctionWrap                    Function 1
 wrapper                 nodeModuleWrapper                 CustomAccessor
