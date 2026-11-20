@@ -64,6 +64,8 @@ const http_exports = {
     parsers.max = max;
   },
   setGlobalProxyFromEnv,
+  websocketMask,
+  websocketUnmask,
   // Assigning http.globalAgent must affect the agent used by http.request
   // (which reads it from the node:_http_agent module), like Node.js.
   get globalAgent() {
@@ -78,6 +80,53 @@ const http_exports = {
   CloseEvent,
   MessageEvent,
 };
+
+function bytesOf(name: string, view: unknown): Uint8Array {
+  if (!ArrayBuffer.isView(view)) throw $ERR_INVALID_ARG_TYPE(name, ["Buffer", "TypedArray", "DataView"], view);
+  // A detached view has no bytes, and its buffer cannot be viewed again.
+  if (view.byteLength === 0) return new Uint8Array(0);
+  return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+}
+
+function maskKeyBytes(key: unknown): number[] {
+  const bytes = bytesOf("mask", key);
+  if (bytes.length !== 4) throw $ERR_INVALID_ARG_VALUE("mask", key, "must be 4 bytes long");
+  // Copied, because the key may share memory with the output.
+  return [bytes[0], bytes[1], bytes[2], bytes[3]];
+}
+
+// RFC 6455, Section 5.3. The source is copied first when it shares memory with the output.
+function xorMask(source: Uint8Array, key: number[], output: Uint8Array, offset: number, length: number) {
+  if (source.buffer === output.buffer && source.byteOffset !== output.byteOffset + offset) {
+    source = source.slice(0, length);
+  }
+  for (let i = 0; i < length; i++) output[offset + i] = source[i] ^ key[i & 3];
+}
+
+/**
+ * XORs `length` bytes of `source` with the repeating 4-byte `mask` into `output` at `offset`.
+ * @see https://nodejs.org/api/http.html#httpwebsocketmasksource-mask-output-offset-length
+ */
+function websocketMask(source, mask, output, offset, length) {
+  const sourceBytes = bytesOf("source", source);
+  const key = maskKeyBytes(mask);
+  const outputBytes = bytesOf("output", output);
+  validateInteger(offset, "offset", 0, outputBytes.length);
+  validateInteger(length, "length", 0, sourceBytes.length);
+  if (length > outputBytes.length - offset) {
+    throw $ERR_OUT_OF_RANGE("length", `<= ${outputBytes.length - offset}`, length);
+  }
+  xorMask(sourceBytes, key, outputBytes, offset, length);
+}
+
+/**
+ * XORs every byte of `buffer` with the repeating 4-byte `mask`, in place.
+ * @see https://nodejs.org/api/http.html#httpwebsocketunmaskbuffer-mask
+ */
+function websocketUnmask(buffer, mask) {
+  const bytes = bytesOf("buffer", buffer);
+  xorMask(bytes, maskKeyBytes(mask), bytes, 0, bytes.length);
+}
 
 function noopRestore() {}
 

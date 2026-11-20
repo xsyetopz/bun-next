@@ -546,10 +546,12 @@ if (global.ReadableStream) {
 
 if (global.Storage) {
   knownGlobals.push(
-    global.localStorage,
     global.sessionStorage,
     global.Storage,
   );
+}
+if (hasLocalStorage) {
+  knownGlobals.push(global.localStorage);
 }
 
 function allowGlobals(...allowlist) {
