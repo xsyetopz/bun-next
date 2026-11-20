@@ -1,6 +1,3 @@
-// Import Events
-let EventEmitter: typeof import("./events").default | undefined;
-
 const ObjectDefineProperty = Object.defineProperty;
 
 type AnyFunction = (...args: any[]) => unknown;
@@ -8,6 +5,7 @@ type AnyFunction = (...args: any[]) => unknown;
 declare global {
   namespace $Node {
     interface Domain extends EventEmitter {
+      members: EventEmitter[];
       add(emitter: EventEmitter): void;
       remove(emitter: EventEmitter): void;
       bind(fn: AnyFunction): () => void;
@@ -26,43 +24,70 @@ interface DomainError extends Error {
 }
 
 interface DomainModule {
+  Domain: typeof Domain;
   createDomain(): $Node.Domain;
   create(): $Node.Domain;
   _stack: $Node.Domain[];
   active: $Node.Domain | null;
 }
 
-// Export Domain
-var domain = {} as DomainModule;
-domain.createDomain = domain.create = function () {
-  if (!EventEmitter) {
-    EventEmitter = require("node:events");
-  }
-  var d = new EventEmitter!() as $Node.Domain;
+const EventEmitter = require("node:events");
+const kEmitError = Symbol("kEmitError");
 
-  function emitError(this: unknown, e?: unknown) {
-    e ||= $ERR_UNHANDLED_ERROR();
-    if (typeof e === "object") {
-      (e as DomainError).domainEmitter = this;
-      ObjectDefineProperty(e, "domain", {
-        __proto__: null,
-        configurable: true,
-        enumerable: false,
-        value: d,
-        writable: true,
-      });
-      (e as DomainError).domainThrown = false;
-    }
-    d.emit("error", e);
+type DomainMember = $Node.EventEmitter & { domain?: $Node.Domain | null };
+
+class Domain extends EventEmitter {
+  members: DomainMember[] = [];
+  declare [kEmitError]: (this: unknown, e?: unknown) => void;
+
+  constructor() {
+    super();
+    const d = this;
+    // The listener added to members: `this` is the emitter that failed.
+    ObjectDefineProperty(this, kEmitError, {
+      __proto__: null,
+      value: function emitError(this: unknown, e?: unknown) {
+        e ||= $ERR_UNHANDLED_ERROR();
+        if (typeof e === "object") {
+          (e as DomainError).domainEmitter = this;
+          ObjectDefineProperty(e, "domain", {
+            __proto__: null,
+            configurable: true,
+            enumerable: false,
+            value: d,
+            writable: true,
+          });
+          (e as DomainError).domainThrown = false;
+        }
+        d.emit("error", e);
+      },
+    });
   }
 
-  d.add = function (emitter: $Node.EventEmitter) {
-    emitter.on("error", emitError);
-  };
-  d.remove = function (emitter: $Node.EventEmitter) {
-    emitter.removeListener("error", emitError);
-  };
-  d.bind = function (fn: AnyFunction) {
+  add(emitter: DomainMember) {
+    if (emitter.domain === this) return;
+    // An emitter belongs to one domain at a time, as in Node.
+    emitter.domain?.remove(emitter);
+    ObjectDefineProperty(emitter, "domain", {
+      __proto__: null,
+      configurable: true,
+      enumerable: false,
+      value: this,
+      writable: true,
+    });
+    this.members.push(emitter);
+    emitter.on("error", this[kEmitError]);
+  }
+
+  remove(emitter: DomainMember) {
+    emitter.domain = null;
+    const index = this.members.indexOf(emitter);
+    if (index !== -1) this.members.splice(index, 1);
+    emitter.removeListener("error", this[kEmitError]);
+  }
+
+  bind(fn: AnyFunction) {
+    const emitError = this[kEmitError];
     return function () {
       var args = Array.prototype.slice.$call(arguments);
       try {
@@ -71,8 +96,10 @@ domain.createDomain = domain.create = function () {
         emitError(err);
       }
     };
-  };
-  d.intercept = function (fn: AnyFunction) {
+  }
+
+  intercept(fn: AnyFunction) {
+    const emitError = this[kEmitError];
     return function (err?: unknown) {
       if (err) {
         emitError(err);
@@ -85,34 +112,43 @@ domain.createDomain = domain.create = function () {
         }
       }
     };
-  };
-  d.run = function (this: $Node.Domain, fn: AnyFunction, ...args: unknown[]) {
+  }
+
+  run(fn: AnyFunction, ...args: unknown[]) {
     this.enter();
     try {
       return fn.$apply(this, args);
     } catch (err) {
-      emitError(err);
+      this[kEmitError](err);
     } finally {
       this.exit();
     }
-  };
-  d.dispose = function (this: $Node.Domain) {
+  }
+
+  dispose() {
     this.removeAllListeners();
     return this;
-  };
-  d.enter = function (this: $Node.Domain) {
+  }
+
+  enter() {
     stack.push(this);
     domain.active = process.domain = this;
     return this;
-  };
-  d.exit = function (this: $Node.Domain) {
+  }
+
+  exit() {
     const index = stack.lastIndexOf(this);
     if (index === -1) return this;
     stack.splice(index, stack.length);
     domain.active = process.domain = stack.length ? stack[stack.length - 1] : null;
     return this;
-  };
-  return d;
+  }
+}
+
+var domain = {} as DomainModule;
+domain.Domain = Domain;
+domain.createDomain = domain.create = function () {
+  return new Domain();
 };
 
 // Domains entered via enter()/run() and not yet exited, innermost last.

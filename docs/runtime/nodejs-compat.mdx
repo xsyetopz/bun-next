@@ -113,7 +113,7 @@ We update this page regularly. It reflects the latest version of Bun's compatibi
 
 ### [`node:domain`](https://nodejs.org/api/domain.html)
 
-🟡 Missing `Domain` `members`. A domain only catches errors thrown synchronously inside `run()`/`bind()` or emitted by emitters passed to `add()`. Bun does not route errors from timers, `process.nextTick`, promises and other async callbacks to the domain.
+🟡 `Domain`, `create()`, `add()`/`remove()` with `members` and `emitter.domain`, `run()`, `bind()` and `intercept()` are implemented. A domain only catches errors thrown synchronously inside `run()`/`bind()` or emitted by emitters passed to `add()`. Bun does not route errors from timers, `process.nextTick`, promises and other async callbacks to the domain.
 
 ### [`node:http2`](https://nodejs.org/api/http2.html)
 
