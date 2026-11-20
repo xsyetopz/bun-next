@@ -1,5 +1,6 @@
 import { describe, expect, it, setDefaultTimeout, test } from "bun:test";
 import { bunEnv, bunExe, isDebug, tempDir, tls, tmpdirSync } from "harness";
+import dc from "node:diagnostics_channel";
 import { once } from "node:events";
 import fs from "node:fs";
 import { join, relative, resolve } from "node:path";
@@ -3356,4 +3357,17 @@ test("a ShadowRealm in a worker can import node:worker_threads", async () => {
 
   expect(stdout).toBe("true\n");
   expect(exitCode).toBe(0);
+});
+
+test("the worker_threads diagnostics channel publishes each new Worker", async () => {
+  const published: unknown[] = [];
+  const onWorker = (message: { worker: unknown }) => published.push(message.worker);
+  dc.subscribe("worker_threads", onWorker);
+  try {
+    const worker = new wt.Worker("", { eval: true });
+    expect(published).toEqual([worker]);
+    await worker.terminate();
+  } finally {
+    dc.unsubscribe("worker_threads", onWorker);
+  }
 });
