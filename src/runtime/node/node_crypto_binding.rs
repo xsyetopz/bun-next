@@ -944,8 +944,6 @@ pub(crate) fn pbkdf2_sync(
     Ok(out_arraybuffer)
 }
 
-pub(crate) fn secure_heap_used() {}
-
 pub(crate) fn get_fips() -> i32 {
     0
 }

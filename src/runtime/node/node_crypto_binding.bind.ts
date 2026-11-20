@@ -166,7 +166,6 @@ export const crypto = b.namespace({
     capability: "js",
     throws: true,
   },
-  secureHeapUsed: {},
   getFips: { returns: b.i32 },
   setFips: { length: 1 },
   setEngine: { length: 2, capability: "heap", throws: true },

@@ -343,6 +343,10 @@ describe("names of digests", () => {
   });
 });
 
+it("secureHeapUsed() reports an empty secure heap, like Node.js on BoringSSL", () => {
+  expect(crypto.secureHeapUsed()).toEqual({ total: 0, used: 0, utilization: 0, min: 0 });
+});
+
 describe("crypto", () => {
   for (let Hash of HashClasses) {
     for (let [input, label] of [

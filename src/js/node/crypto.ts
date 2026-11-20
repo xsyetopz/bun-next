@@ -74,7 +74,6 @@ const {
   randomBytes,
   randomFillSync,
   randomFill,
-  secureHeapUsed,
   getFips,
   setFips,
   setEngine,
@@ -609,7 +608,10 @@ crypto_exports.checkPrimeSync = checkPrimeSync;
 crypto_exports.generatePrime = generatePrime;
 crypto_exports.generatePrimeSync = generatePrimeSync;
 
-crypto_exports.secureHeapUsed = secureHeapUsed;
+crypto_exports.secureHeapUsed = function secureHeapUsed() {
+  // BoringSSL has no secure heap, so this matches Node.js run without `--secure-heap`.
+  return { total: 0, used: 0, utilization: 0, min: 0 };
+};
 crypto_exports.setEngine = setEngine;
 crypto_exports.getFips = getFips;
 crypto_exports.setFips = setFips;
