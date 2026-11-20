@@ -11,7 +11,7 @@ We update this page regularly. It reflects the latest version of Bun's compatibi
 
 ## Built-in Node.js modules
 
-Each module below also loads under the `bun:` prefix: `bun:fs` is `node:fs` and `bun:quic` is `node:quic`. The exceptions are `bun:test` and `bun:sqlite`, which are Bun's own test runner and SQLite driver rather than `node:test` and `node:sqlite`.
+Each implemented module below also loads under the `bun:` prefix: `bun:fs` is `node:fs` and `bun:quic` is `node:quic`. The exceptions are `bun:test` and `bun:sqlite`, which are Bun's own test runner and SQLite driver rather than `node:test` and `node:sqlite`.
 
 ### [`node:assert`](https://nodejs.org/api/assert.html)
 
@@ -95,7 +95,7 @@ Each module below also loads under the `bun:` prefix: `bun:fs` is `node:fs` and 
 
 ### [`node:zlib`](https://nodejs.org/api/zlib.html)
 
-🟢 Fully implemented. 98% of Node.js's test suite passes.
+🟡 Compression and decompression are fully implemented, and 98% of Node.js's test suite passes. Missing the ZIP archive classes `ZipBuffer`, `ZipEntry` and `ZipFile`, and the `node:zlib/iter` module.
 
 ### [`node:async_hooks`](https://nodejs.org/api/async_hooks.html)
 
@@ -127,7 +127,7 @@ Each module below also loads under the `bun:` prefix: `bun:fs` is `node:fs` and 
 
 ### [`node:net`](https://nodejs.org/api/net.html)
 
-🟢 Fully implemented, including `BlockList`, `SocketAddress`, `autoSelectFamily`, Unix domain sockets and `server.listen({ fd })`. `new net.Socket({ fd })` cannot read from an existing file descriptor (only write-only wrapping works). `server.listen(handle)` only accepts `{ fd }`.
+🟡 Missing `BoundSocket`. `BlockList`, `SocketAddress`, `autoSelectFamily`, Unix domain sockets and `server.listen({ fd })` are implemented. `new net.Socket({ fd })` cannot read from an existing file descriptor (only write-only wrapping works). `server.listen(handle)` only accepts `{ fd }`.
 
 ### [`node:perf_hooks`](https://nodejs.org/api/perf_hooks.html)
 
@@ -192,6 +192,22 @@ Each module below also loads under the `bun:` prefix: `bun:fs` is `node:fs` and 
 ### [`node:sea`](https://nodejs.org/api/single-executable-applications.html)
 
 🔴 Not implemented. Use [`bun build --compile`](/compiler/executables) to build single-file executables instead.
+
+### [`node:ffi`](https://nodejs.org/api/ffi.html)
+
+🔴 Not implemented. Use [`bun:ffi`](/runtime/ffi) instead.
+
+### [`node:stream/iter`](https://nodejs.org/api/stream_iter.html)
+
+🔴 Not implemented. The API is experimental in Node.js.
+
+### [`node:vfs`](https://nodejs.org/api/vfs.html)
+
+🔴 Not implemented. Node.js loads it only with `--experimental-vfs`.
+
+### [`node:bench`](https://nodejs.org/api/bench.html) and [`node:dtls`](https://nodejs.org/api/dtls.html)
+
+🔴 Not implemented. Node.js loads them only with `--experimental-bench` and `--experimental-dtls`.
 
 ## Node.js globals
 
