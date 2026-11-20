@@ -2,6 +2,7 @@ import { realpathSync } from "fs";
 import { bunEnv, bunExe, tempDir } from "harness";
 import { AddressInfo, createServer, Server, Socket } from "net";
 import { createTest } from "node-harness";
+import dc from "node:diagnostics_channel";
 import { once } from "node:events";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -774,4 +775,57 @@ it("server.unref() on a pipe/unix-socket listener lets the process exit", async 
   expect(stdout).toBe("");
   expect(exitCode === 0 ? "" : stderr).toBe("");
   expect(exitCode).toBe(0);
+});
+
+it("publishes the net diagnostics channels for listen, connect, and accept", async () => {
+  const events: unknown[] = [];
+  const server = createServer();
+  const listen = dc.tracingChannel("net.server.listen");
+  const handlers = {
+    asyncStart: ({ server: s, options }) => events.push(["listen:asyncStart", s === server, options]),
+    asyncEnd: ({ server: s }) => events.push(["listen:asyncEnd", s === server]),
+    error: ({ error }) => events.push(["listen:error", error.code]),
+  };
+  const onClient = ({ socket }) => events.push(["client", socket instanceof Socket]);
+  const onServer = ({ socket }) => events.push(["server", socket.server === server]);
+  listen.subscribe(handlers);
+  dc.subscribe("net.client.socket", onClient);
+  dc.subscribe("net.server.socket", onServer);
+  try {
+    server.listen({ port: 0, host: "127.0.0.1" });
+    await once(server, "listening");
+    const accepted = once(server, "connection");
+    const client = new Socket().connect((server.address() as AddressInfo).port, "127.0.0.1");
+    await accepted;
+    client.destroy();
+    server.close();
+  } finally {
+    listen.unsubscribe(handlers);
+    dc.unsubscribe("net.client.socket", onClient);
+    dc.unsubscribe("net.server.socket", onServer);
+  }
+  expect(events).toEqual([
+    ["listen:asyncStart", true, { port: 0, host: "127.0.0.1" }],
+    ["listen:asyncEnd", true],
+    ["client", true],
+    ["server", true],
+  ]);
+});
+
+it("publishes net.server.listen error when the address is in use", async () => {
+  await using first = createServer().listen(0, "127.0.0.1");
+  await once(first, "listening");
+  const second = createServer();
+  const errors: unknown[] = [];
+  const listen = dc.tracingChannel("net.server.listen");
+  const handlers = { error: ({ server, error }) => errors.push([server === second, error.code]) };
+  listen.subscribe(handlers);
+  try {
+    second.listen((first.address() as AddressInfo).port, "127.0.0.1");
+    const [error] = await once(second, "error");
+    expect(errors).toEqual([[true, error.code]]);
+  } finally {
+    listen.unsubscribe(handlers);
+  }
+  expect(errors[0][1]).toBe("EADDRINUSE");
 });

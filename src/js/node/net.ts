@@ -52,6 +52,10 @@ const {
   kVerifyError,
 } = require("internal/net/symbols");
 const { addServerAbortSignalOption } = require("internal/net/server_abort_signal");
+const dc = require("node:diagnostics_channel");
+const netClientSocketChannel = dc.channel("net.client.socket");
+const netServerSocketChannel = dc.channel("net.server.socket");
+const netServerListen = dc.tracingChannel("net.server.listen");
 
 type SocketHandle = Socket<SocketInstance | ConnectData> & {
   setTypeOfService?(tos: number): number | undefined;
@@ -1653,6 +1657,7 @@ function onconnection(err, clientHandle) {
   // Node reports a throwing 'connection' listener as uncaughtException and keeps the socket.
   try {
     self.emit("connection", _socket);
+    if (netServerSocketChannel.hasSubscribers) netServerSocketChannel.publish({ socket: _socket });
   } catch (e) {
     reportError(e);
   }
@@ -2311,6 +2316,8 @@ Socket.prototype.connect = function connect(...args) {
   {
     const [options, connectListener] =
       $isArray(args[0]) && args[0][normalizedArgsSymbol] ? args[0] : normalizeArgs(args);
+    // A cluster worker connects each accepted fd through here; that socket is the server's.
+    if (!this.isServer && netClientSocketChannel.hasSubscribers) netClientSocketChannel.publish({ socket: this });
     let connection = this[ksocket];
     let upgradeDuplex = false;
     let { port, host, path, socket, rejectUnauthorized, checkServerIdentity, session, fd, pauseOnConnect } = options;
@@ -4053,6 +4060,13 @@ Server.prototype.listen = function listen(port, hostname, onListen) {
     throw $ERR_SERVER_ALREADY_LISTEN();
   }
 
+  if (netServerListen.hasSubscribers) {
+    const first = arguments[0];
+    const options =
+      typeof first === "object" && first !== null ? first : path ? { path } : { port, host: clusterHost ?? undefined };
+    netServerListen.asyncStart.publish({ server: this, options });
+  }
+
   if (onListen != null) {
     this.once("listening", onListen);
   }
@@ -4110,11 +4124,9 @@ Server.prototype.listen = function listen(port, hostname, onListen) {
     );
   } catch (err) {
     const isUnix = path != null;
-    process.nextTick(
-      emitErrorNextTick,
-      this,
-      formatListenError(err, isUnix ? path : hostname, isUnix ? undefined : port),
-    );
+    const error = formatListenError(err, isUnix ? path : hostname, isUnix ? undefined : port);
+    if (netServerListen.hasSubscribers) netServerListen.error.publish({ server: this, error });
+    process.nextTick(emitErrorNextTick, this, error);
   }
   return this;
 };
@@ -4217,6 +4229,8 @@ Server.prototype[kRealListen] = function (
       addServerName(this._handle, name, context.context ?? context);
     }
   }
+
+  if (netServerListen.hasSubscribers) netServerListen.asyncEnd.publish({ server: this });
 
   // Unref the handle if the server was unref'ed prior to listening
   if (this._unref) this.unref();
@@ -4397,6 +4411,7 @@ function listenInCluster(
         server[kClusterUnixPath] = undefined;
         handle[kClusterOwner] = null;
         handle.close();
+        if (netServerListen.hasSubscribers) netServerListen.error.publish({ server, error: err });
         process.nextTick(emitErrorNextTick, server, err);
       }
       return;
@@ -4420,6 +4435,7 @@ Server.prototype[kClusterFauxListen] = function (handle, backlog, path) {
   handle.onconnection = onClusterConnection;
   handle[kClusterOwner] = this;
   handle.listen(backlog || 511);
+  if (netServerListen.hasSubscribers) netServerListen.asyncEnd.publish({ server: this });
   if (this._unref) this.unref();
   process.nextTick(emitListeningNextTick, this);
 };
@@ -4464,6 +4480,7 @@ function onClusterConnection(err, clientHandle) {
   socket._server = self;
   self._connections++;
   self.emit("connection", socket);
+  if (netServerSocketChannel.hasSubscribers) netServerSocketChannel.publish({ socket });
 }
 
 function createServer(options, connectionListener) {
