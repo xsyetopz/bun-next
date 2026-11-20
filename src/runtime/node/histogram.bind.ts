@@ -102,6 +102,8 @@ export const Histogram = b.class({
     resetCount: { getter: b.u64 },
     /** A `Histogram` with the values recorded so far, which recording more does not change. */
     snapshot: { returns: b.self, capability: "heap" },
+    /** The counts and the moving averages in the CBOR format of Node.js, which `importHistogram()` reads. */
+    export: { returns: b.bufferSource, capability: "heap", throws: true },
     /** A `Histogram` with the values recorded since `other` was a snapshot of this one. */
     diff: {
       args: { other: b.self },

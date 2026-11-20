@@ -6,14 +6,14 @@
 #[derive(Clone, Copy, Default)]
 pub struct Ewma {
     /// Between 0 and 1, or 0 if this is off.
-    alpha: f64,
+    pub(crate) alpha: f64,
     /// 0 if the error rate is not tracked.
-    threshold: i64,
+    pub(crate) threshold: i64,
     /// Whether a value was recorded since the last reset.
     started: bool,
-    mean: f64,
-    variance: f64,
-    error_rate: f64,
+    pub(crate) mean: f64,
+    pub(crate) variance: f64,
+    pub(crate) error_rate: f64,
 }
 
 impl Ewma {

@@ -1870,6 +1870,16 @@ describe("Histogram", () => {
       );
     });
 
+    test("export() writes the counts in the CBOR layout of Node.js", () => {
+      const h = createHistogram({ highest: 100, figures: 1 });
+      [5, 5, 8].forEach(value => h.record(value));
+      // A map of version 2, the range, 3 values from 5 to 8, offset 0, a ratio of 1.0, 64 slots and the counts at
+      // slots 5 and 5 + 3.
+      const ratio = [0xfb, 0x3f, 0xf0, 0, 0, 0, 0, 0, 0];
+      const expected = [0xab, 0, 2, 1, 1, 2, 0x18, 100, 3, 1, 4, 3, 5, 5, 6, 8, 7, 0, 8, ...ratio, 9, 0x18, 64];
+      assert.deepStrictEqual([...h.export()], [...expected, 10, 0x84, 5, 2, 3, 1]);
+    });
+
     test("a receiver of another class", () => {
       const recordable = createHistogram();
       const interval = monitorEventLoopDelay();
@@ -1964,6 +1974,7 @@ describe("Histogram", () => {
         "cohensD/1",
         "countAt/1",
         "diff/1",
+        "export/0",
         "get count",
         "get countBigInt",
         "get ewmaErrorRate",

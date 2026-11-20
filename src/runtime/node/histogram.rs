@@ -10,7 +10,9 @@ use std::sync::Arc;
 use bun_core::fmt::{NodeNumber, OutOfRangeOptions, double, out_of_range};
 use bun_core::{Timespec, TimespecMockMode};
 use bun_histogram::Dequantize;
-use bun_jsc::bindgen::{self, JsHeap, JsLocal, JsPayload as _, JsScope, JsWrapper, to_js};
+use bun_jsc::bindgen::{
+    self, BufferSource, JsHeap, JsLocal, JsPayload as _, JsScope, JsWrapper, to_js,
+};
 use bun_jsc::{
     BinaryType, ErrorCode, JSGlobalObject, JSMap, JSPromise, JSValue, JsResult, MAX_SAFE_INTEGER,
 };
@@ -587,6 +589,14 @@ impl Histogram {
 
     pub(crate) fn snapshot<'a>(&self, heap: &JsHeap<'a>) -> JsWrapper<'a, Self> {
         Self::detached(self.read_state(State::clone)).into_js(heap)
+    }
+
+    pub(crate) fn export<'a>(
+        &self,
+        heap: &JsHeap<'a>,
+    ) -> bindgen::Result<'a, JsLocal<'a, BufferSource>> {
+        let bytes = self.read_state(|state| state.histogram.export(&state.ewma));
+        heap.create_uint8_array_from_box(bytes.into_boxed_slice())
     }
 
     pub(crate) fn ks_test(&self, other: &Histogram) -> f64 {

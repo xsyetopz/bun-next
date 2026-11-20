@@ -30,6 +30,7 @@ mod buckets;
 mod compare;
 mod confidence;
 mod ewma;
+mod export;
 mod qrde;
 pub use compare::{MannWhitneyTest, WelchTest};
 pub use ewma::Ewma;
@@ -46,6 +47,7 @@ const CHUNK_LEN: usize = 512;
 pub struct Histogram {
     lowest_discernible_value: u64,
     highest_trackable_value: u64,
+    significant_figures: u32,
     unit_magnitude: u32,
     sub_bucket_half_count_magnitude: u32,
     /// One for every `CHUNK_LEN` slots that a value can reach, or none at all while the histogram is empty. A chunk
@@ -98,6 +100,7 @@ impl Histogram {
         Some(Self {
             lowest_discernible_value: lowest,
             highest_trackable_value: highest,
+            significant_figures: figures,
             unit_magnitude,
             sub_bucket_half_count_magnitude,
             chunks: Vec::new(),
