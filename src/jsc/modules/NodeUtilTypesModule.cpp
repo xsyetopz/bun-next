@@ -14,6 +14,7 @@
 #include <JavaScriptCore/JSSetIterator.h>
 #include <JavaScriptCore/ObjectPrototypeInlines.h>
 #include <cmath>
+#include "JSAbortSignal.h"
 #include "JSEventTarget.h"
 #include "JavaScriptCore/TopExceptionScope.h"
 #include "_NativeModule.h"
@@ -882,6 +883,16 @@ JSC_DEFINE_HOST_FUNCTION(jsFunctionMarkPromiseAsHandled,
     if (auto* promise = dynamicDowncast<JSC::JSPromise>(callframe->argument(0)))
         promise->markAsHandled();
     return JSValue::encode(jsUndefined());
+}
+
+// node:util's transferableAbortSignal(). False when the operand is no AbortSignal.
+JSC_DEFINE_HOST_FUNCTION(jsFunctionMarkAbortSignalTransferable, (JSC::JSGlobalObject * globalObject, JSC::CallFrame* callFrame))
+{
+    auto* signal = WebCore::JSAbortSignal::toWrapped(globalObject->vm(), callFrame->argument(0));
+    if (!signal)
+        return JSC::JSValue::encode(JSC::jsBoolean(false));
+    signal->markTransferable();
+    return JSC::JSValue::encode(JSC::jsBoolean(true));
 }
 
 extern "C" bool Bun__deepEqualsNodeStrict(JSC::EncodedJSValue a, JSC::EncodedJSValue b, JSC::JSGlobalObject* globalObject);

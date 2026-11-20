@@ -25,6 +25,8 @@
 
 #include "config.h"
 #include "AbortSignal.h"
+#include "AddEventListenerOptions.h"
+#include "StructuredSerializeOptions.h"
 
 #include "AbortAlgorithm.h"
 #include "DOMException.h"
@@ -32,6 +34,10 @@
 #include "Event.h"
 #include "EventNames.h"
 #include "JSDOMException.h"
+#include "JSDOMExceptionHandling.h"
+#include "MessageChannel.h"
+#include "MessageEvent.h"
+#include "MessagePort.h"
 #include "JavaScriptCore/JSCJSValue.h"
 #include "ScriptExecutionContext.h"
 #include "WebCoreOpaqueRoot.h"
@@ -59,6 +65,78 @@ Ref<AbortSignal> AbortSignal::abort(ScriptExecutionContext& context, JSC::JSValu
     auto signal = adoptRef(*new AbortSignal(&context, Aborted::Yes, reason));
     if (reason.isUndefined())
         signal->m_commonReason = CommonAbortReason::UserAbort;
+    return signal;
+}
+
+// node gives every transfer a channel of its own; neither end keeps the event loop alive.
+Ref<MessagePort> AbortSignal::createTransferPort(ScriptExecutionContext& context)
+{
+    auto channel = MessageChannel::create(context);
+    Ref sender = channel->port1();
+    sender->jsUnref();
+    addAlgorithm([sender = WTF::move(sender)](JSC::JSValue reason) {
+        auto* context = sender->scriptExecutionContext();
+        auto* globalObject = context ? context->jsGlobalObject() : nullptr;
+        if (!globalObject) {
+            sender->close();
+            return;
+        }
+        auto& vm = globalObject->vm();
+        auto scope = DECLARE_TOP_EXCEPTION_SCOPE(vm);
+        auto posted = sender->postMessage(*globalObject, reason, {});
+        sender->close();
+        // node posts from an 'abort' listener, where a reason that cannot be cloned is an uncaught exception.
+        if (auto* exception = scope.exception()) {
+            if (vm.hasPendingTerminationException())
+                return;
+            scope.clearException();
+            reportException(globalObject, exception);
+        } else if (posted.hasException()) {
+            reportException(globalObject, createDOMException(*globalObject, posted.releaseException()));
+        }
+    });
+    return channel->port2();
+}
+
+namespace {
+
+class TransferredAbortListener final : public EventListener {
+public:
+    static Ref<TransferredAbortListener> create(AbortSignal& signal) { return adoptRef(*new TransferredAbortListener(signal)); }
+
+    bool operator==(const EventListener& other) const final { return this == &other; }
+
+    void handleEvent(ScriptExecutionContext&, Event& event) final
+    {
+        RefPtr signal = m_signal.get();
+        if (signal && event.type() == eventNames().messageEvent)
+            signal->signalAbort(static_cast<MessageEvent&>(event).cachedData().getValue());
+    }
+
+private:
+    explicit TransferredAbortListener(AbortSignal& signal)
+        : EventListener(CPPEventListenerType)
+        , m_signal(signal)
+    {
+    }
+
+    WeakPtr<AbortSignal, WeakPtrImplWithEventTargetData> m_signal;
+};
+
+}
+
+Ref<AbortSignal> AbortSignal::createTransferred(ScriptExecutionContext& context, Ref<MessagePort>&& port)
+{
+    auto signal = AbortSignal::create(&context);
+    signal->markTransferable();
+    static_cast<EventTarget&>(port.get()).addEventListener(eventNames().messageEvent, TransferredAbortListener::create(signal), {});
+    port->jsUnref();
+    // Its wrapper outlives the program's last reference while an 'abort' listener waits on the port, as with node's port.onmessage.
+    signal->incrementPendingActivityCount();
+    signal->addAlgorithm([signal = signal.ptr(), port = WTF::move(port)](JSC::JSValue) {
+        signal->decrementPendingActivityCount();
+        port->close();
+    });
     return signal;
 }
 

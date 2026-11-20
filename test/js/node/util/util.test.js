@@ -1086,3 +1086,36 @@ describe("util.throttle", () => {
     expect(await throttled().catch(e => e)).toBe(error);
   });
 });
+
+describe("transferableAbortSignal", () => {
+  it("rejects a value that is not an AbortSignal", () => {
+    expect(() => util.transferableAbortSignal({})).toThrow(expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }));
+  });
+
+  it("only a transferable signal survives structuredClone", () => {
+    expect(() => structuredClone(AbortSignal.abort())).toThrow(expect.objectContaining({ name: "DataCloneError" }));
+    const reason = new Error("x");
+    const clone = structuredClone(util.transferableAbortSignal(AbortSignal.abort(reason)));
+    expect(clone).toBeInstanceOf(AbortSignal);
+    expect([clone.aborted, clone.reason.message]).toEqual([true, "x"]);
+  });
+
+  it("aborts a copy posted to a worker", async () => {
+    const ac = util.transferableAbortController();
+    const { Worker } = await import("node:worker_threads");
+    const worker = new Worker(
+      `const { parentPort } = require("node:worker_threads");
+      const keepAlive = setInterval(() => {}, 1000);
+      parentPort.once("message", signal => {
+        signal.onabort = () => { clearInterval(keepAlive); parentPort.postMessage("aborted: " + signal.reason); };
+        parentPort.postMessage("ready");
+      });`,
+      { eval: true },
+    );
+    const { promise, resolve } = Promise.withResolvers();
+    worker.on("message", message => (message === "ready" ? ac.abort("stop") : resolve(message)));
+    worker.postMessage(ac.signal, [ac.signal]);
+    expect(await promise).toBe("aborted: stop");
+    await worker.terminate();
+  });
+});

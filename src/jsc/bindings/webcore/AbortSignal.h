@@ -47,6 +47,7 @@ BUN_DECLARE_FFI_DELETER(AbortSignalTimeout, AbortSignal__Timeout__deinit);
 namespace WebCore {
 
 class AbortAlgorithm;
+class MessagePort;
 class ScriptExecutionContext;
 class WebCoreOpaqueRoot;
 
@@ -70,6 +71,7 @@ private:
         Aborted = 2,
         HasAbortEventListener = 4,
         IsFiringEventListeners = 8,
+        Transferable = 16,
     };
 
 public:
@@ -80,6 +82,14 @@ public:
     static Ref<AbortSignal> abort(ScriptExecutionContext&, JSC::JSValue reason);
     static Ref<AbortSignal> timeout(ScriptExecutionContext&, uint64_t milliseconds);
     static Ref<AbortSignal> any(ScriptExecutionContext&, const Vector<RefPtr<AbortSignal>>&);
+
+    // node's util.transferableAbortSignal(): structured clone copies such a signal, and the copy aborts with it.
+    bool isTransferable() const { return m_flags & static_cast<uint8_t>(AbortSignalFlags::Transferable); }
+    void markTransferable() { m_flags |= static_cast<uint8_t>(AbortSignalFlags::Transferable); }
+    // The end of a new channel whose peer posts this signal's reason when it aborts.
+    Ref<MessagePort> createTransferPort(ScriptExecutionContext&);
+    // A transferable signal that aborts when `port` receives the reason.
+    static Ref<AbortSignal> createTransferred(ScriptExecutionContext&, Ref<MessagePort>&&);
 
     static uint32_t addAbortAlgorithmToSignal(AbortSignal&, Ref<AbortAlgorithm>&&);
     static void removeAbortAlgorithmFromSignal(AbortSignal&, uint32_t algorithmIdentifier);

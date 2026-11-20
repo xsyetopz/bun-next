@@ -738,6 +738,25 @@ function createAbortedListener(promise: Promise<void>) {
   return () => onAbortedCallback(promise);
 }
 
+const markAbortSignalTransferable: (signal: unknown) => boolean = $newCppFunction(
+  "NodeUtilTypesModule.cpp",
+  "jsFunctionMarkAbortSignalTransferable",
+  1,
+);
+
+function transferableAbortSignal(signal: AbortSignal) {
+  if (!markAbortSignalTransferable(signal)) {
+    throw $ERR_INVALID_ARG_TYPE("signal", "AbortSignal", signal);
+  }
+  return signal;
+}
+
+function transferableAbortController() {
+  const controller = new AbortController();
+  markAbortSignalTransferable(controller.signal);
+  return controller;
+}
+
 function aborted(signal: AbortSignal, resource: object) {
   if (!$isObject(signal) || !(signal instanceof AbortSignal)) {
     throw $ERR_INVALID_ARG_TYPE("signal", "AbortSignal", signal);
@@ -858,8 +877,8 @@ var cjs_exports: UtilModule = {
     });
   },
   toUSVString,
-  // transferableAbortSignal,
-  // transferableAbortController,
+  transferableAbortSignal,
+  transferableAbortController,
   aborted,
   types,
   parseEnv,

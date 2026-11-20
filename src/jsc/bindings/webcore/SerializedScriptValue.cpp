@@ -45,6 +45,7 @@
 #include "JSDOMException.h"
 #include "JSDOMGlobalObject.h"
 #include "JSMessagePort.h"
+#include "JSAbortSignal.h"
 #include "OpenSSLUtilities.h"
 #include "ScriptExecutionContext.h"
 #include "WebCoreJSClientData.h"
@@ -203,6 +204,7 @@ enum SerializationTag {
     Bun__KeyObjectTag = 252,
     Bun__nodenet_BlockList = 251,
     Bun__NodePerformanceHooksHistogramTag = 250,
+    Bun__AbortSignalTag = 249,
 
     ErrorTag = 255
 };
@@ -782,6 +784,7 @@ private:
         Vector<uint8_t>& out, SerializationContext context, ArrayBufferContentsArray& sharedBuffers, SerializationForStorage forStorage, SerializationForCrossProcessTransfer forTransfer)
         : CloneBase(lexicalGlobalObject)
         , m_buffer(out)
+        , m_messagePorts(messagePorts)
         , m_emptyIdentifier(Identifier::fromString(lexicalGlobalObject->vm(), emptyString()))
         , m_context(context)
         , m_sharedBuffers(sharedBuffers)
@@ -1435,6 +1438,13 @@ private:
                 return true;
             }
 
+            if (auto* signal = dynamicDowncast<JSAbortSignal>(obj); signal && signal->wrapped().isTransferable()
+                && m_forTransfer == SerializationForCrossProcessTransfer::No && m_forStorage == SerializationForStorage::No) {
+                if (!startObjectInternal(signal)) // handle duplicates
+                    return true;
+                return writeTransferableAbortSignal(signal->wrapped(), code);
+            }
+
             if (auto* histogram = dynamicDowncast<Bun::Bindgen::Generated::JSHistogram>(obj)) {
                 // The clone shares the counts, which bytes that leave the process cannot.
                 if (m_forTransfer == SerializationForCrossProcessTransfer::Yes || m_forStorage == SerializationForStorage::Yes) {
@@ -1576,6 +1586,43 @@ private:
     {
         if (!writeLittleEndian(m_buffer, c)) [[unlikely]]
             fail();
+    }
+
+    // An aborted signal carries its reason, any other the index of a port that receives the reason.
+    bool writeTransferableAbortSignal(AbortSignal& signal, SerializationReturnCode& code)
+    {
+        write(Bun__AbortSignalTag);
+        if (!signal.aborted()) {
+            write(static_cast<uint8_t>(0));
+            write(static_cast<uint32_t>(m_messagePorts.size()));
+            m_messagePorts.append(signal.createTransferPort(*defaultGlobalObject(m_lexicalGlobalObject)->scriptExecutionContext()));
+            return true;
+        }
+        write(static_cast<uint8_t>(1));
+        Vector<uint8_t> serializedReason;
+        Vector<RefPtr<MessagePort>> dummyMessagePorts;
+        Vector<RefPtr<JSC::ArrayBuffer>> dummyArrayBuffers;
+#if ENABLE(WEBASSEMBLY)
+        WasmModuleArray dummyModules;
+        WasmMemoryHandleArray dummyMemoryHandles;
+#endif
+        ArrayBufferContentsArray dummySharedBuffers;
+        CloneSerializer reasonSerializer(m_lexicalGlobalObject, dummyMessagePorts, dummyArrayBuffers,
+#if ENABLE(WEBASSEMBLY)
+            dummyModules,
+            dummyMemoryHandles,
+#endif
+            serializedReason, SerializationContext::Default, dummySharedBuffers, m_forStorage, m_forTransfer);
+        code = reasonSerializer.serialize(signal.jsReason(*m_lexicalGlobalObject));
+        if (code != SerializationReturnCode::SuccessfullyCompleted)
+            return true;
+        // What the reason holds out of band would not reach the receiver.
+        if (!dummyMessagePorts.isEmpty() || !reasonSerializer.m_serializedBlockLists.isEmpty() || !reasonSerializer.m_serializedHistograms.isEmpty()) {
+            code = SerializationReturnCode::DataCloneError;
+            return true;
+        }
+        write(serializedReason);
+        return true;
     }
 
     void write(uint32_t i)
@@ -1977,6 +2024,8 @@ private:
     }
 #endif
     ObjectPool m_objectPool;
+    // A transferable AbortSignal adds the end of a new channel.
+    Vector<RefPtr<MessagePort>>& m_messagePorts;
     ObjectPool m_transferredMessagePorts;
     ObjectPool m_transferredArrayBuffers;
     typedef HashMap<RefPtr<UniquedStringImpl>, uint32_t, IdentifierRepHash> StringConstantPool;
@@ -3480,6 +3529,44 @@ private:
         return histogram;
     }
 
+    JSValue readTransferableAbortSignal()
+    {
+        uint8_t aborted;
+        if (!read(aborted)) {
+            fail();
+            return JSValue();
+        }
+        auto& context = *defaultGlobalObject(m_globalObject)->scriptExecutionContext();
+        RefPtr<AbortSignal> signal;
+        if (aborted) {
+            Vector<uint8_t> serializedReason;
+            if (!read(serializedReason)) {
+                fail();
+                return JSValue();
+            }
+            Vector<RefPtr<MessagePort>> noMessagePorts;
+            CloneDeserializer reasonDeserializer(m_lexicalGlobalObject, m_globalObject, noMessagePorts, nullptr, serializedReason);
+            auto [reason, reasonCode] = reasonDeserializer.deserialize();
+            if (reasonCode != SerializationReturnCode::SuccessfullyCompleted) {
+                fail();
+                return JSValue();
+            }
+            m_gcBuffer.appendWithCrashOnOverflow(reason);
+            signal = AbortSignal::abort(context, reason);
+            signal->markTransferable();
+        } else {
+            uint32_t index;
+            if (!read(index) || index >= m_messagePorts.size() || !m_messagePorts[index]) {
+                fail();
+                return JSValue();
+            }
+            signal = AbortSignal::createTransferred(context, Ref { *m_messagePorts[index] });
+        }
+        JSValue value = getJSValue(*signal);
+        addToObjectPool(value);
+        return value;
+    }
+
     JSValue readBunType(JSC::EncodedJSValue (*deserialize)(JSC::JSGlobalObject*, const uint8_t** ptr, const uint8_t* end))
     {
         JSValue deserialized = JSValue::decode(deserialize(m_lexicalGlobalObject, &m_ptr, m_end));
@@ -4000,6 +4087,9 @@ private:
 
         case Bun__NodePerformanceHooksHistogramTag:
             return readHistogram();
+
+        case Bun__AbortSignalTag:
+            return readTransferableAbortSignal();
 
         default:
             m_ptr = preTagPtr; // Push the tag back
@@ -4906,6 +4996,9 @@ ExceptionOr<Ref<SerializedScriptValue>> SerializedScriptValue::create(JSGlobalOb
             messagePorts.append(WTF::move(port));
             continue;
         }
+        // node clones a transferable AbortSignal whether or not the transfer list names it.
+        if (auto* signal = JSAbortSignal::toWrapped(vm, transferable.get()); signal && signal->isTransferable())
+            continue;
 
         return Exception { DataCloneError };
     }

@@ -31,6 +31,7 @@
 
 #include "EventNames.h"
 #include "GlobalEventScope.h"
+#include "JSAbortSignal.h"
 #include "JSMessagePort.h"
 #include "MessageEvent.h"
 #include "MessagePortPipe.h"
@@ -87,8 +88,10 @@ ExceptionOr<void> MessagePort::postMessage(JSC::JSGlobalObject& state, JSC::JSVa
                 return Exception { DataCloneError, "Transfer list contains source port"_s };
             if (jsPort->wrapped().isDetached() || jsPort->wrapped().isClosing())
                 return Exception { DataCloneError, "MessagePort in transfer list is already detached"_s };
+        } else if (auto* jsSignal = dynamicDowncast<JSAbortSignal>(obj); jsSignal && jsSignal->wrapped().isTransferable()) {
+            continue;
         } else if (!obj->inherits<JSC::JSArrayBuffer>()) {
-            // MessagePort and ArrayBuffer are the only transferables bun serializes;
+            // MessagePort, ArrayBuffer and a transferable AbortSignal are the only transferables bun serializes;
             // node reports anything else here, in order, with this exact message.
             return Exception { DataCloneError, "Found invalid value in transferList."_s };
         }
