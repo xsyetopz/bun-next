@@ -1,5 +1,5 @@
 // What the compiler reads in place of src/js/node/worker_threads.ts, which `bun run` evaluates. The two do the same.
-// Written against that file with the SHA-256 4b1d2dfce35036bd4b694be3a8983426d217479f024b4892787b351a84305ca9.
+// Written against that file with the SHA-256 0b993ee2836d4f38faf64265187e2ca6788ced95497315394f0517c0df295174.
 // When that file changes, bring the change here and write the new hash: test/internal/second-texts-of-modules.test.ts.
 
 declare const self: EventTarget & {
@@ -30,6 +30,7 @@ function normalizeWorkerName(rawName: string | null | undefined) {
 }
 
 const { isAbsolute: pathIsAbsolute } = require("node:path");
+const workerThreadsChannel = require("node:diagnostics_channel").channel("worker_threads");
 
 // node's filename validation for non-eval workers: absolute or "./"/"../"-relative
 // paths and file: URL objects; bare specifiers and string URLs are rejected.
@@ -1039,6 +1040,7 @@ class Worker extends EventEmitter {
       }
       urlRevokeRegistry.register(this.#worker, this.#urlToRevoke);
     }
+    if (workerThreadsChannel.hasSubscribers) workerThreadsChannel.publish({ worker: this });
   }
 
   get threadId() {
