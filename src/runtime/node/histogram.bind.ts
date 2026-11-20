@@ -11,6 +11,7 @@ const percentile = {
   capability: "heap",
   throws: true,
 } as const;
+const atValue = { args: { value: b.f64 }, expected: { value: ["number"] }, returns: b.f64 } as const;
 /** It can make the counts grow, which it tells the GC of the object. */
 const grows = { passThis: true, capability: "heap" } as const;
 
@@ -46,6 +47,11 @@ export const Histogram = b.class({
     /** A `Map`. */
     percentiles: { getter: b.any, capability: "js", throws: true },
     percentilesBigInt: { getter: b.any, capability: "js", throws: true },
+    countAt: atValue,
+    cdf: atValue,
+    ccdf: atValue,
+    /** How many times `reset()` or `subtract()` removed values. */
+    resetCount: { getter: b.u64 },
     reset: {},
     toJSON: { returns: HistogramJSON, capability: "heap", throws: true },
     "@@inspectCustom": { builtin: true, length: 2 },
@@ -59,6 +65,7 @@ export const RecordableHistogram = b.class({
     record: { args: { val: b.any }, length: 1, passThis: true, capability: "js", throws: true },
     recordDelta: grows,
     add: { ...grows, args: { other: b.self }, expected: { other: ["RecordableHistogram"] } },
+    subtract: { args: { other: b.self }, expected: { other: ["RecordableHistogram"] } },
   },
 });
 

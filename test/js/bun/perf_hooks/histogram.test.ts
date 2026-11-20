@@ -70,8 +70,8 @@ describe("Histogram", () => {
   test("invalid record arguments", () => {
     const h = createHistogram();
 
-    assert.throws(() => h.record(0), /out of range/);
     assert.throws(() => h.record(-1), /out of range/);
+    assert.throws(() => h.record(-1n), /out of range/);
     assert.throws(() => h.record("invalid" as any), /must be of type number/);
   });
 
@@ -150,6 +150,68 @@ describe("Histogram", () => {
       deltas.some(delta => delta % 1000 !== 0),
       `every delta is a whole number of microseconds: ${deltas}`,
     );
+  });
+
+  describe("distribution queries", () => {
+    test("countAt counts the values in the slot of a value", () => {
+      const h = createHistogram({ lowest: 1000 });
+      for (const value of [0, 1, 511, 512, 2000]) h.record(value);
+      assert.deepStrictEqual(
+        [0, 511, 512, 2000, 3000].map(value => h.countAt(value)),
+        [3, 3, 1, 1, 0],
+      );
+      assert.throws(() => h.countAt("1" as any), { code: "ERR_INVALID_ARG_TYPE" });
+    });
+
+    test("countAt is 0 outside of the trackable range", notInNode, () => {
+      const h = createHistogram({ highest: 1000 });
+      h.record(0);
+      assert.deepStrictEqual([h.countAt(-1), h.countAt(NaN), h.countAt(1e6)], [0, 0, 0]);
+    });
+
+    test("cdf and ccdf", () => {
+      const h = createHistogram();
+      assert.deepStrictEqual([h.cdf(1), h.ccdf(1)], [0, 1]);
+      for (let i = 1; i <= 4; i++) h.record(i);
+      assert.deepStrictEqual(
+        [-1, 0, 1, 2, 4, 5, Infinity].map(value => h.cdf(value)),
+        [0, 0, 0.25, 0.5, 1, 1, 1],
+      );
+      assert.strictEqual(h.ccdf(3), 0.25);
+      assert.throws(() => h.cdf(1n as any), { code: "ERR_INVALID_ARG_TYPE" });
+    });
+  });
+
+  describe("subtract", () => {
+    test("removes counts slot by slot and clamps at zero", () => {
+      const h = createHistogram();
+      for (const value of [1, 2, 2, 9]) h.record(value);
+      const other = createHistogram();
+      for (const value of [2, 3, 9, 9]) other.record(value);
+      h.subtract(other);
+      assert.deepStrictEqual([h.count, h.min, h.max, h.countAt(2)], [2, 1, 2, 1]);
+      h.subtract(h);
+      assert.deepStrictEqual([h.count, h.min, h.max], [0, 9223372036854776000, 0]);
+    });
+
+    test("subtracts exceeds and validates its argument", () => {
+      const h = createHistogram({ highest: 10 });
+      h.record(100);
+      h.record(100);
+      const other = createHistogram({ highest: 10 });
+      other.record(100);
+      h.subtract(other);
+      assert.strictEqual(h.exceeds, 1);
+      assert.throws(() => h.subtract({} as any), { code: "ERR_INVALID_ARG_TYPE" });
+    });
+
+    test("resetCount counts reset() and subtract()", () => {
+      const h = createHistogram();
+      assert.strictEqual(h.resetCount, 0);
+      h.reset();
+      h.subtract(createHistogram());
+      assert.strictEqual(h.resetCount, 2);
+    });
   });
 
   describe("exceeds functionality", () => {
@@ -263,7 +325,13 @@ describe("Histogram", () => {
   describe("edge cases", () => {
     test("recording zero", () => {
       const h = createHistogram();
-      assert.throws(() => h.record(0), /out of range/);
+      h.record(5);
+      h.record(0);
+      h.record(-0);
+      h.record(0n);
+      assert.strictEqual(h.count, 4);
+      assert.strictEqual(h.min, 0);
+      assert.strictEqual(h.percentile(50), 0);
     });
 
     test("recording negative values", () => {
@@ -1097,13 +1165,10 @@ describe("Histogram", () => {
         1.5,
         NaN,
         Infinity,
-        0,
-        -0,
         -1,
         2 ** 53,
         1e21,
         -(2 ** 40),
-        0n,
         -1n,
         2n ** 63n,
         2n ** 64n + 5n,
@@ -1119,13 +1184,10 @@ describe("Histogram", () => {
           'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be an integer. Received 1.5',
           'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be an integer. Received NaN',
           'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be an integer. Received Infinity',
-          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 1 && <= 9007199254740991. Received 0',
-          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 1 && <= 9007199254740991. Received -0',
-          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 1 && <= 9007199254740991. Received -1',
-          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 1 && <= 9007199254740991. Received 9_007_199_254_740_992',
-          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 1 && <= 9007199254740991. Received 1e_+21',
-          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 1 && <= 9007199254740991. Received -1_099_511_627_776',
-          "RangeError ERR_OUT_OF_RANGE: value is out of range",
+          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 0 && <= 9007199254740991. Received -1',
+          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 0 && <= 9007199254740991. Received 9_007_199_254_740_992',
+          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 0 && <= 9007199254740991. Received 1e_+21',
+          'RangeError ERR_OUT_OF_RANGE: The value of "val" is out of range. It must be >= 0 && <= 9007199254740991. Received -1_099_511_627_776',
           "RangeError ERR_OUT_OF_RANGE: value is out of range",
           "RangeError ERR_OUT_OF_RANGE: value is out of range",
           "RangeError ERR_OUT_OF_RANGE: value is out of range",
@@ -1369,10 +1431,19 @@ describe("Histogram", () => {
       assert.strictEqual(Object.getPrototypeOf(Base), Object.prototype);
       assert.strictEqual(Object.getPrototypeOf(Recordable.constructor), Base.constructor);
       assert.strictEqual(h.constructor, Recordable.constructor);
-      assert.deepStrictEqual(members(Recordable), ["RecordableHistogram/0", "add/1", "record/1", "recordDelta/0"]);
+      assert.deepStrictEqual(members(Recordable), [
+        "RecordableHistogram/0",
+        "add/1",
+        "record/1",
+        "recordDelta/0",
+        "subtract/1",
+      ]);
       assert.deepStrictEqual(members(Base), [
         "Histogram/0",
         "[nodejs.util.inspect.custom]/2",
+        "ccdf/1",
+        "cdf/1",
+        "countAt/1",
         "get count",
         "get countBigInt",
         "get exceeds",
@@ -1384,6 +1455,7 @@ describe("Histogram", () => {
         "get minBigInt",
         "get percentiles",
         "get percentilesBigInt",
+        "get resetCount",
         "get stddev",
         "percentile/1",
         "percentileBigInt/1",

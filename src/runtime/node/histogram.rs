@@ -37,11 +37,14 @@ enum Counts {
     Shared(Arc<Guarded<State>>),
 }
 
+#[derive(Clone)]
 struct State {
     histogram: bun_histogram::Histogram,
     /// When `record_delta` last ran, or 0. `recordDelta()` and `Interval::sample` read different
     /// clocks, and no histogram has both.
     previous_ns: u64,
+    /// How many times values were removed.
+    reset_count: u64,
 }
 
 /// An `ELDHistogram`, as the timer that samples the event loop sees it.
@@ -67,9 +70,9 @@ impl State {
         self.previous_ns = self.previous_ns.max(other.previous_ns);
     }
 
-    fn add_to_itself(&mut self) {
-        let copy = self.histogram.clone();
-        self.histogram.add(&copy);
+    fn subtract(&mut self, other: &State) {
+        self.histogram.subtract(&other.histogram);
+        self.reset_count += 1;
     }
 }
 
@@ -128,7 +131,7 @@ impl Histogram {
         let shared = match &mut *counts {
             Counts::Own(state) => Arc::new(Guarded::new(State {
                 histogram: state.histogram.take(),
-                previous_ns: state.previous_ns,
+                ..*state
             })),
             Counts::Shared(state) => return Arc::clone(state),
         };
@@ -142,6 +145,7 @@ fn new_state(histogram: bun_histogram::Histogram) -> (State, Arc<Size>) {
     let state = State {
         histogram,
         previous_ns: 0,
+        reset_count: 0,
     };
     (state, size)
 }
@@ -261,10 +265,33 @@ impl Histogram {
         Ok(self.read(|histogram| histogram.value_at_percentile(percentile)))
     }
 
+    /// Node.js: reads outside its counts for a negative value.
+    pub(crate) fn count_at(&self, value: f64) -> f64 {
+        if !(value >= 0.0) {
+            return 0.0;
+        }
+        // `as` saturates.
+        self.read(|histogram| histogram.count_at(value as u64)) as f64
+    }
+
+    /// A value below 0 is in the first slot.
+    pub(crate) fn cdf(&self, value: f64) -> f64 {
+        self.read(|histogram| histogram.cdf(value as u64))
+    }
+
+    pub(crate) fn ccdf(&self, value: f64) -> f64 {
+        1.0 - self.cdf(value)
+    }
+
+    pub(crate) fn get_reset_count(&self) -> u64 {
+        self.with(|state| state.reset_count).0
+    }
+
     pub(crate) fn reset(&self) {
         self.with(|state| {
             state.histogram.reset();
             state.previous_ns = 0;
+            state.reset_count += 1;
         });
     }
 
@@ -306,7 +333,7 @@ impl Histogram {
             JSBigInt::from_js(val)
         };
         let value = if let Some(big_int) = big_int {
-            if !val.is_big_int_in_int64_range(1, i64::MAX) {
+            if !val.is_big_int_in_int64_range(0, i64::MAX) {
                 // https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc#L181
                 return Err(cx.heap.error_with_code(
                     ErrorCode::OUT_OF_RANGE,
@@ -315,7 +342,7 @@ impl Histogram {
             }
             big_int.to_int64() as u64
         } else {
-            validators::validate_integer(cx.global(), val, "val", Some(1), Some(MAX_SAFE_INTEGER))?
+            validators::validate_integer(cx.global(), val, "val", Some(0), Some(MAX_SAFE_INTEGER))?
                 as u64
         };
         let (_, grown) = self.with(|state| state.histogram.record(value));
@@ -338,36 +365,49 @@ impl Histogram {
         heap: &JsHeap<'a>,
         other: &Histogram,
     ) {
-        let add = |into: &mut State, other: &State| {
-            into.add(other);
+        let grown = self.with_other(other, State::add);
+        Self::report_growth(heap, this_value, grown);
+    }
+
+    pub(crate) fn subtract(&self, other: &Histogram) {
+        self.with_other(other, State::subtract);
+    }
+
+    /// Returns the bytes that the counts have grown by. `other` can be `self`.
+    fn with_other(&self, other: &Histogram, f: impl Fn(&mut State, &State)) -> usize {
+        let apply = |into: &mut State, other: &State| {
+            f(into, other);
             self.size.update(into)
         };
-        let grown = if core::ptr::eq(self, other) {
-            self.with(State::add_to_itself).1
-        } else {
-            match (&mut *self.counts.borrow_mut(), &*other.counts.borrow()) {
-                (Counts::Own(this), Counts::Own(other)) => add(this, other),
-                (Counts::Own(this), Counts::Shared(other)) => add(this, &other.lock()),
-                (Counts::Shared(this), Counts::Own(other)) => add(&mut this.lock(), other),
-                (Counts::Shared(state), Counts::Shared(other)) if Arc::ptr_eq(state, other) => {
-                    let mut state = state.lock();
-                    state.add_to_itself();
-                    self.size.update(&state)
-                }
-                // In the order of their addresses: another thread may be adding the two the other way around.
-                (Counts::Shared(this), Counts::Shared(other))
-                    if Arc::as_ptr(this) < Arc::as_ptr(other) =>
-                {
-                    let mut this = this.lock();
-                    add(&mut this, &other.lock())
-                }
-                (Counts::Shared(this), Counts::Shared(other)) => {
-                    let other = other.lock();
-                    add(&mut this.lock(), &other)
-                }
-            }
+        let apply_to_itself = |state: &mut State| {
+            let copy = state.clone();
+            apply(state, &copy)
         };
-        Self::report_growth(heap, this_value, grown);
+        if core::ptr::eq(self, other) {
+            return match &mut *self.counts.borrow_mut() {
+                Counts::Own(state) => apply_to_itself(state),
+                Counts::Shared(state) => apply_to_itself(&mut state.lock()),
+            };
+        }
+        match (&mut *self.counts.borrow_mut(), &*other.counts.borrow()) {
+            (Counts::Own(this), Counts::Own(other)) => apply(this, other),
+            (Counts::Own(this), Counts::Shared(other)) => apply(this, &other.lock()),
+            (Counts::Shared(this), Counts::Own(other)) => apply(&mut this.lock(), other),
+            (Counts::Shared(state), Counts::Shared(other)) if Arc::ptr_eq(state, other) => {
+                apply_to_itself(&mut state.lock())
+            }
+            // In the order of their addresses: another thread may be combining the two the other way around.
+            (Counts::Shared(this), Counts::Shared(other))
+                if Arc::as_ptr(this) < Arc::as_ptr(other) =>
+            {
+                let mut this = this.lock();
+                apply(&mut this, &other.lock())
+            }
+            (Counts::Shared(this), Counts::Shared(other)) => {
+                let other = other.lock();
+                apply(&mut this.lock(), &other)
+            }
+        }
     }
 }
 

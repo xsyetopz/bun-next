@@ -150,6 +150,30 @@ impl Histogram {
         }
     }
 
+    /// Removes the counts of `other` from those here, slot by slot. A slot here that has fewer keeps none.
+    ///
+    /// Node.js: slots are matched by their index, so a histogram of another range or precision has its counts
+    /// removed from other values.
+    pub fn subtract(&mut self, other: &Self) {
+        for (index, n) in other.counts() {
+            if let Some(Some(chunk)) = self.chunks.get_mut(index / CHUNK_LEN)
+                && let Some(slot) = chunk.get_mut(index % CHUNK_LEN)
+            {
+                let removed = (*slot).min(n);
+                *slot -= removed;
+                self.count -= removed;
+            }
+        }
+        self.exceeds = self.exceeds.saturating_sub(other.exceeds);
+        let mut used = self.counts().map(|(index, _)| index);
+        let first = used.next();
+        let last = used.last().or(first);
+        (self.first, self.last) = match (first, last) {
+            (Some(first), Some(last)) => (first, last),
+            _ => (usize::MAX, 0),
+        };
+    }
+
     /// Moves the counts out, which leaves `self` as it was when it was created.
     pub fn take(&mut self) -> Self {
         let taken = Self {
@@ -177,6 +201,37 @@ impl Histogram {
     /// How many values were not counted.
     pub fn exceeds(&self) -> u64 {
         self.exceeds
+    }
+
+    /// How many values were counted in the slot of `value`.
+    ///
+    /// Node.js: reads outside its counts for a value above the highest trackable one.
+    pub fn count_at(&self, value: u64) -> u64 {
+        if value > self.highest_trackable_value {
+            return 0;
+        }
+        let index = self.index_of(value);
+        match self.chunks.get(index / CHUNK_LEN) {
+            Some(Some(chunk)) => chunk.get(index % CHUNK_LEN).copied().unwrap_or(0),
+            _ => 0,
+        }
+    }
+
+    /// The share of the values in the slot of `value` or below it, or 0 if the histogram is empty.
+    pub fn cdf(&self, value: u64) -> f64 {
+        if self.count == 0 {
+            return 0.0;
+        }
+        if value > self.max() {
+            return 1.0;
+        }
+        let index = self.index_of(value);
+        let at_or_below: u64 = self
+            .counts()
+            .take_while(|&(at, _)| at <= index)
+            .map(|(_, n)| n)
+            .sum();
+        at_or_below as f64 / self.count as f64
     }
 
     /// The lowest value of the first slot in use, or `i64::MAX` if there is none.
@@ -327,10 +382,15 @@ impl Histogram {
 
     /// The slots in use and their counts, from the lowest.
     fn slots(&self) -> impl Iterator<Item = (Slot, u64)> {
+        self.counts().map(|(index, n)| (self.slot(index), n))
+    }
+
+    /// The indexes of the slots in use and their counts, from the lowest.
+    fn counts(&self) -> impl Iterator<Item = (usize, u64)> {
         self.existing_chunks()
             .flat_map(|(index, chunk)| chunk.iter().zip(index..))
             .filter(|&(&n, _)| n != 0)
-            .map(|(&n, index)| (self.slot(index), n))
+            .map(|(&n, index)| (index, n))
     }
 
     /// Each with the index of its first slot, from the lowest.
