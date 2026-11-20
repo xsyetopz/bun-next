@@ -13,6 +13,28 @@ test("undefined args don't throw", () => {
   expect(request.method).toBe("GET");
 });
 
+test("keepalive is read from the init, then the input Request, and duplex is half", () => {
+  const kept = new Request("https://example.com/", { keepalive: 1 as unknown as boolean });
+  const requests = {
+    absent: new Request("https://example.com/"),
+    truthy: kept,
+    inherited: new Request(kept),
+    inheritedWithUrl: new Request(kept, { method: "POST" }),
+    overridden: new Request(kept, { keepalive: false }),
+    cloned: kept.clone(),
+  };
+  expect(
+    Object.fromEntries(Object.entries(requests).map(([name, { keepalive, duplex }]) => [name, { keepalive, duplex }])),
+  ).toEqual({
+    absent: { keepalive: false, duplex: "half" },
+    truthy: { keepalive: true, duplex: "half" },
+    inherited: { keepalive: true, duplex: "half" },
+    inheritedWithUrl: { keepalive: true, duplex: "half" },
+    overridden: { keepalive: false, duplex: "half" },
+    cloned: { keepalive: true, duplex: "half" },
+  });
+});
+
 test("request can receive undefined signal", async () => {
   const request = new Request("http://example.com/", {
     method: "POST",

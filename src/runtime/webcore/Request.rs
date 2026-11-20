@@ -97,9 +97,10 @@ pub(crate) struct Flags {
     pub(crate) cache: FetchCacheMode,
     pub(crate) mode: FetchRequestMode,
     pub(crate) https: bool,
+    pub(crate) keepalive: bool,
 }
 
-bun_core::assert_ffi_layout!(Flags, 4, 1; redirect @ 0, cache @ 1, mode @ 2, https @ 3);
+bun_core::assert_ffi_layout!(Flags, 5, 1; redirect @ 0, cache @ 1, mode @ 2, https @ 3, keepalive @ 4);
 
 impl Default for Flags {
     fn default() -> Self {
@@ -108,6 +109,7 @@ impl Default for Flags {
             cache: FetchCacheMode::Default,
             mode: FetchRequestMode::Cors,
             https: false,
+            keepalive: false,
         }
     }
 }
@@ -662,6 +664,15 @@ impl Request {
         fetch_request_mode_to_js(self.flags.mode, cx.global())
     }
 
+    pub(crate) fn get_keepalive(&self) -> bool {
+        self.flags.keepalive
+    }
+
+    /// Bun only supports half-duplex request bodies, the one value of the `RequestDuplex` enum.
+    pub(crate) fn get_duplex(&self, cx: &mut JsScope<'_>) -> JSValue {
+        bun_core::EncodedSlice::latin1(b"half").to_js(cx.global())
+    }
+
     pub(crate) fn get_redirect(&self, cx: &mut JsScope<'_>) -> JSValue {
         fetch_redirect_to_js(self.flags.redirect, cx.global())
     }
@@ -881,7 +892,7 @@ enum Fields {
     Redirect,
     Cache,
     // Integrity,
-    // Keepalive,
+    Keepalive,
     Signal,
     // Proxy,
     // Timeout,
@@ -992,6 +1003,11 @@ impl Request {
                     if !fields.contains(Fields::Mode) {
                         req.flags.mode = request.flags.mode;
                         fields.insert(Fields::Mode);
+                    }
+
+                    if !fields.contains(Fields::Keepalive) {
+                        req.flags.keepalive = request.flags.keepalive;
+                        fields.insert(Fields::Keepalive);
                     }
 
                     if !fields.contains(Fields::Headers) {
@@ -1184,6 +1200,13 @@ impl Request {
                 {
                     req.flags.mode = mode_value;
                     fields.insert(Fields::Mode);
+                }
+            }
+
+            if !fields.contains(Fields::Keepalive) {
+                if let Some(keepalive) = value.get(cx.global(), "keepalive")? {
+                    req.flags.keepalive = keepalive.to_boolean();
+                    fields.insert(Fields::Keepalive);
                 }
             }
         }
