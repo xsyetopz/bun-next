@@ -15,6 +15,8 @@ export function inspectCustom(this: Histogram, depth: number, options) {
     mean: this.mean,
     exceeds: this.exceeds,
     stddev: this.stddev,
+    skewness: this.skewness,
+    kurtosis: this.kurtosis,
     count: this.count,
     percentiles: this.percentiles,
   };

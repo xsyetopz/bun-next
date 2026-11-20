@@ -227,6 +227,14 @@ impl Histogram {
         self.read(|histogram| histogram.stddev())
     }
 
+    pub(crate) fn get_skewness(&self) -> f64 {
+        self.read(|histogram| histogram.skewness())
+    }
+
+    pub(crate) fn get_kurtosis(&self) -> f64 {
+        self.read(|histogram| histogram.kurtosis())
+    }
+
     fn percentiles_map<'a>(
         &self,
         cx: &mut JsScope<'a>,
@@ -360,6 +368,8 @@ impl Histogram {
                 mean: histogram.mean(),
                 exceeds: histogram.exceeds(),
                 stddev: histogram.stddev(),
+                skewness: histogram.skewness(),
+                kurtosis: histogram.kurtosis(),
                 percentiles: JsLocal::NULL,
             };
             (json, histogram.percentiles())

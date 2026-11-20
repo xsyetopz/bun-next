@@ -182,6 +182,26 @@ describe("Histogram", () => {
     });
   });
 
+  describe("skewness and kurtosis", () => {
+    test("are the standardized third and fourth moments", () => {
+      const h = createHistogram();
+      for (const value of [1, 1, 1, 10]) h.record(value);
+      assert.ok(Math.abs((h as any).skewness - 2 / Math.sqrt(3)) < 1e-12, String((h as any).skewness));
+      assert.ok(Math.abs((h as any).kurtosis + 2 / 3) < 1e-12, String((h as any).kurtosis));
+    });
+
+    test("are 0 with too few values or no spread", () => {
+      const h = createHistogram();
+      assert.deepStrictEqual([(h as any).skewness, (h as any).kurtosis], [0, 0]);
+      for (const value of [1, 2, 9]) h.record(value);
+      assert.notStrictEqual((h as any).skewness, 0);
+      assert.strictEqual((h as any).kurtosis, 0);
+      h.reset();
+      for (let i = 0; i < 5; i++) h.record(7);
+      assert.deepStrictEqual([(h as any).skewness, (h as any).kurtosis], [0, 0]);
+    });
+  });
+
   describe("subtract", () => {
     test("removes counts slot by slot and clamps at zero", () => {
       const h = createHistogram();
@@ -721,11 +741,13 @@ describe("Histogram", () => {
         mean: 20,
         exceeds: 0,
         stddev: 8.16496580927726,
+        skewness: 0,
+        kurtosis: 0,
         percentiles: { 0: 10, 50: 20, 75: 30, 100: 30 },
       });
       assert.strictEqual(
         JSON.stringify(h),
-        '{"count":3,"min":10,"max":30,"mean":20,"exceeds":0,"stddev":8.16496580927726,"percentiles":{"0":10,"50":20,"75":30,"100":30}}',
+        '{"count":3,"min":10,"max":30,"mean":20,"exceeds":0,"stddev":8.16496580927726,"skewness":0,"kurtosis":0,"percentiles":{"0":10,"50":20,"75":30,"100":30}}',
       );
     });
 
@@ -771,7 +793,7 @@ describe("Histogram", () => {
 
     assert.strictEqual(
       inspect(h),
-      "Histogram {\n  min: 1,\n  max: 1,\n  mean: 1,\n  exceeds: 0,\n  stddev: 0,\n  count: 1,\n  percentiles: Map(2) { 0 => 1, 100 => 1 }\n}",
+      "Histogram {\n  min: 1,\n  max: 1,\n  mean: 1,\n  exceeds: 0,\n  stddev: 0,\n  skewness: 0,\n  kurtosis: 0,\n  count: 1,\n  percentiles: Map(2) { 0 => 1, 100 => 1 }\n}",
     );
     assert.strictEqual(inspect(h, { depth: -1 }), "[RecordableHistogram]");
     assert.strictEqual(inspect({ h }, { depth: 0 }), "{ h: [RecordableHistogram] }");
@@ -1551,6 +1573,7 @@ describe("Histogram", () => {
         "get countBigInt",
         "get exceeds",
         "get exceedsBigInt",
+        "get kurtosis",
         "get max",
         "get maxBigInt",
         "get mean",
@@ -1559,6 +1582,7 @@ describe("Histogram", () => {
         "get percentiles",
         "get percentilesBigInt",
         "get resetCount",
+        "get skewness",
         "get stddev",
         "percentile/1",
         "percentileBigInt/1",

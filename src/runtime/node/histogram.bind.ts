@@ -22,6 +22,8 @@ export const HistogramJSON = b.dictionary({
   mean: b.f64,
   exceeds: b.u64,
   stddev: b.f64,
+  skewness: b.f64,
+  kurtosis: b.f64,
   percentiles: b.any,
 });
 
@@ -42,6 +44,8 @@ export const Histogram = b.class({
     exceeds: { getter: b.u64 },
     exceedsBigInt: { ...bigInt, rustName: "exceeds" },
     stddev: { getter: b.f64 },
+    skewness: { getter: b.f64 },
+    kurtosis: { getter: b.f64 },
     percentile: { ...percentile, returns: b.u64 },
     percentileBigInt: { ...percentile, returns: b.u64.asBigInt, rustName: "percentile" },
     /** A `Map`. */

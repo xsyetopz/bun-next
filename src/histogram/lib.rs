@@ -319,6 +319,42 @@ impl Histogram {
         (sum / self.count as f64).sqrt()
     }
 
+    /// How lopsided the values are about the mean: the third standardized moment. 0 if fewer than 3 were counted or
+    /// they are all in one slot.
+    pub fn skewness(&self) -> f64 {
+        let [m2, m3, _] = self.central_moments();
+        if self.count < 3 || m2 == 0.0 {
+            return 0.0;
+        }
+        m3 / (m2 * m2.sqrt())
+    }
+
+    /// How heavy the tails are compared to a normal distribution: the fourth standardized moment less 3. 0 if fewer
+    /// than 4 were counted or they are all in one slot.
+    pub fn kurtosis(&self) -> f64 {
+        let [m2, _, m4] = self.central_moments();
+        if self.count < 4 || m2 == 0.0 {
+            return 0.0;
+        }
+        m4 / (m2 * m2) - 3.0
+    }
+
+    /// The second, third and fourth moments about the mean, of the middle of each slot.
+    fn central_moments(&self) -> [f64; 3] {
+        let mean = self.mean();
+        let sums = self.slots().fold([0.0; 3], |[m2, m3, m4], (slot, n)| {
+            let deviation = slot.median() as f64 - mean;
+            let squared = deviation * deviation;
+            let n = n as f64;
+            [
+                m2 + n * squared,
+                m3 + n * squared * deviation,
+                m4 + n * squared * squared,
+            ]
+        });
+        sums.map(|sum| sum / self.count as f64)
+    }
+
     /// The highest value of the slot at or below which `percentile` percent of the values are, or 0 if the histogram
     /// is empty. `percentile` is above 0 and at most 100.
     ///
