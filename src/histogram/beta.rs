@@ -1,4 +1,4 @@
-//! The beta distribution, which the binomial and Student's t-distributions come from.
+//! The beta distribution, which the binomial and Student's t-distributions, and the weights of `qrde()`, come from.
 //!
 //! https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc
 
@@ -9,7 +9,7 @@ pub(crate) struct Beta {
     b: f64,
     log_normalization: f64,
     /// The continued fraction converges fastest below it, so above it the other tail is computed.
-    symmetry_point: f64,
+    pub(crate) symmetry_point: f64,
 }
 
 impl Beta {
@@ -23,23 +23,38 @@ impl Beta {
         }
     }
 
-    /// The chance of at most `x`.
-    pub(crate) fn cdf(&self, x: f64) -> f64 {
-        if x <= 0.0 {
-            return 0.0;
-        }
-        if x >= 1.0 {
-            return 1.0;
-        }
-        let front = self.front(x);
-        if x < self.symmetry_point {
-            front * continued_fraction(self.a, self.b, x) / self.a
-        } else {
-            1.0 - front * continued_fraction(self.b, self.a, 1.0 - x) / self.b
+    /// The distribution of `1 - x`.
+    pub(crate) fn reflected(self) -> Self {
+        Self {
+            a: self.b,
+            b: self.a,
+            symmetry_point: 1.0 - self.symmetry_point,
+            ..self
         }
     }
 
-    /// `x^a (1 - x)^b / B(a, b)`.
+    /// The chance of at most `x`.
+    pub(crate) fn cdf(&self, x: f64) -> f64 {
+        self.cdf_and_front(x).0
+    }
+
+    /// The chance of at most `x`, and `x^a (1 - x)^b / B(a, b)`, which is 0 outside of 0 to 1.
+    pub(crate) fn cdf_and_front(&self, x: f64) -> (f64, f64) {
+        if x <= 0.0 {
+            return (0.0, 0.0);
+        }
+        if x >= 1.0 {
+            return (1.0, 0.0);
+        }
+        let front = self.front(x);
+        let cdf = if x < self.symmetry_point {
+            front * continued_fraction(self.a, self.b, x) / self.a
+        } else {
+            1.0 - front * continued_fraction(self.b, self.a, 1.0 - x) / self.b
+        };
+        (cdf, front)
+    }
+
     fn front(&self, x: f64) -> f64 {
         (self.log_normalization + self.a * x.ln() + self.b * (1.0 - x).ln()).exp()
     }

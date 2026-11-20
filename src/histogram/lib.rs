@@ -30,8 +30,10 @@ mod buckets;
 mod compare;
 mod confidence;
 mod ewma;
+mod qrde;
 pub use compare::{MannWhitneyTest, WelchTest};
 pub use ewma::Ewma;
+pub use qrde::{Dequantize, Qrde};
 
 /// What an empty histogram reports as its minimum.
 const EMPTY_MIN: u64 = i64::MAX as u64;
