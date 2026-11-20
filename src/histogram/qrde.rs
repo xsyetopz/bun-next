@@ -1,6 +1,6 @@
 //! `qrde()`: a density of the values whose bins hold equal shares of them, from Harrell-Davis quantiles.
 //!
-//! https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc
+//! https://github.com/nodejs/node/blob/v26.13.1/src/histogram.cc
 
 use core::ops::Range;
 

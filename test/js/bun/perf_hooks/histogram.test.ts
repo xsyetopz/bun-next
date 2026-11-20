@@ -7,7 +7,7 @@ import { MessageChannel, Worker } from "node:worker_threads";
 import { createHistogram, monitorEventLoopDelay } from "perf_hooks";
 
 // This file also runs under Node.js (`node --test`), which is where the expected values come from.
-// Node.js v26.3.0 fails the tests that are marked with this.
+// Node.js v26.13.1 fails the tests that are marked with this.
 const notInNode = { skip: typeof Bun === "undefined" && "a bug in Node.js" };
 // The classes are native in Bun, where a native class differs from one that is written in JavaScript.
 const isNative = typeof Bun !== "undefined";

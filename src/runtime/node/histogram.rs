@@ -540,7 +540,7 @@ impl Histogram {
         heap: &JsHeap<'a>,
         other: &Histogram,
     ) -> bindgen::Result<'a, JsWrapper<'a, Self>> {
-        // https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc
+        // https://github.com/nodejs/node/blob/v26.13.1/src/histogram.cc
         let this = self.read_state(State::clone);
         let diff = other.read_state(|other| {
             if !this.histogram.same_layout(&other.histogram) {
@@ -944,7 +944,7 @@ fn big_int_in_range<'a>(
     name: &str,
 ) -> bindgen::Result<'a, u64> {
     if !value.is_big_int_in_int64_range(min, i64::MAX) {
-        // https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc#L181
+        // https://github.com/nodejs/node/blob/v26.13.1/src/histogram.cc#L2153
         return Err(heap.error_with_code(
             ErrorCode::OUT_OF_RANGE,
             format_args!("{name} is out of range"),

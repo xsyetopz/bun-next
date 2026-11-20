@@ -1,6 +1,6 @@
 //! The beta distribution, which the binomial and Student's t-distributions, and the weights of `qrde()`, come from.
 //!
-//! https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc
+//! https://github.com/nodejs/node/blob/v26.13.1/src/histogram.cc
 
 use core::f64::consts::{PI, SQRT_2};
 

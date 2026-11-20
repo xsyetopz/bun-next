@@ -46,7 +46,7 @@ export const WelchTest = b.dictionary(
 );
 export const MannWhitneyTest = b.dictionary({ uStatistic: b.f64, zScore: b.f64, pValue: b.f64 }, result);
 
-/** https://github.com/nodejs/node/blob/v26.3.0/lib/internal/histogram.js */
+/** https://github.com/nodejs/node/blob/v26.13.1/lib/internal/histogram.js */
 export const Histogram = b.class({
   ...nodeClass,
   rustPath: "crate::node::histogram::Histogram",

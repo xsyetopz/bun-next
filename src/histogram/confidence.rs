@@ -1,7 +1,7 @@
 //! `meanCI()` and `percentileCI()`, and the distributions that they and the tests in `compare.rs` take their
 //! critical values from.
 //!
-//! https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc
+//! https://github.com/nodejs/node/blob/v26.13.1/src/histogram.cc
 
 use crate::Histogram;
 use crate::beta::Beta;
