@@ -1281,6 +1281,58 @@ int us_ssl_ctx_set_verify_signature_algorithms(SSL_CTX *ctx) {
   return SSL_CTX_set_verify_algorithm_prefs(ctx, algorithms, sizeof(algorithms) / sizeof(algorithms[0]));
 }
 
+/* src/runtime/socket/cert_compression.rs */
+extern int bun_cert_compress(uint8_t algorithm, const uint8_t *in, size_t in_len, void *sink,
+                             int (*append)(void *, const uint8_t *, size_t));
+extern int bun_cert_decompress(uint8_t algorithm, const uint8_t *in, size_t in_len, uint8_t *out,
+                               size_t out_len);
+
+static int us_cert_compression_append(void *cbb, const uint8_t *data, size_t len) {
+  return CBB_add_bytes((CBB *)cbb, data, len);
+}
+
+static int us_cert_decompress(uint8_t algorithm, CRYPTO_BUFFER **out, size_t uncompressed_len,
+                              const uint8_t *in, size_t in_len) {
+  uint8_t *data = nullptr;
+  us_crypto_buffer_ptr buffer(uncompressed_len ? CRYPTO_BUFFER_alloc(&data, uncompressed_len) : nullptr);
+  if (!buffer || !bun_cert_decompress(algorithm, in, in_len, data, uncompressed_len)) return 0;
+  *out = buffer.release();
+  return 1;
+}
+
+/* BoringSSL passes no algorithm ID to the callbacks, so each one gets its own pair. */
+#define US_CERT_COMPRESSION_ALGORITHM(id)                                                          \
+  static int us_cert_compress_##id(SSL *, CBB *out, const uint8_t *in, size_t in_len) {           \
+    return bun_cert_compress(id, in, in_len, out, us_cert_compression_append);                     \
+  }                                                                                                \
+  static int us_cert_decompress_##id(SSL *, CRYPTO_BUFFER **out, size_t uncompressed_len,        \
+                                     const uint8_t *in, size_t in_len) {                           \
+    return us_cert_decompress(id, out, uncompressed_len, in, in_len);                              \
+  }
+US_CERT_COMPRESSION_ALGORITHM(1)
+US_CERT_COMPRESSION_ALGORITHM(2)
+US_CERT_COMPRESSION_ALGORITHM(3)
+#undef US_CERT_COMPRESSION_ALGORITHM
+
+/* Registers the algorithms packed in `packed` (see us_bun_socket_context_options_t) in order. */
+static int us_ssl_ctx_add_cert_compression(SSL_CTX *ctx, unsigned int packed) {
+  unsigned int count = packed & 0xff;
+  if (count > 3) return 0;
+  for (unsigned int i = 1; i <= count; i++) {
+    uint16_t id = (packed >> (8 * i)) & 0xff;
+    ssl_cert_compression_func_t compress = nullptr;
+    ssl_cert_decompression_func_t decompress = nullptr;
+    switch (id) {
+    case 1: compress = us_cert_compress_1; decompress = us_cert_decompress_1; break;
+    case 2: compress = us_cert_compress_2; decompress = us_cert_decompress_2; break;
+    case 3: compress = us_cert_compress_3; decompress = us_cert_decompress_3; break;
+    default: return 0;
+    }
+    if (!SSL_CTX_add_cert_compression_alg(ctx, id, compress, decompress)) return 0;
+  }
+  return 1;
+}
+
 /* Exported for quic.cpp (lsquic configures ALPN/transport-params on the SSL_CTX
  * directly) and as the body of us_ssl_ctx_from_options. */
 SSL_CTX *us_ssl_ctx_build_raw(struct us_bun_socket_context_options_t options,
@@ -1485,6 +1537,10 @@ SSL_CTX *us_ssl_ctx_build_raw(struct us_bun_socket_context_options_t options,
 
   if (options.sigalgs ? !SSL_CTX_set1_sigalgs_list(ssl_context.get(), options.sigalgs)
                       : !us_ssl_ctx_set_verify_signature_algorithms(ssl_context.get())) {
+    return NULL;
+  }
+
+  if (!us_ssl_ctx_add_cert_compression(ssl_context.get(), options.cert_compression)) {
     return NULL;
   }
 

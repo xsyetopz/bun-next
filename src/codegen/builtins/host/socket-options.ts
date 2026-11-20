@@ -26,7 +26,7 @@ export const iterated = (operand: b.OperandName, ...path: b.MemberPath) =>
     result: "Escapes",
   });
 
-export const sequencesOfTLSOptions = ["ca", "cert", "key", "crl"];
+export const sequencesOfTLSOptions = ["ca", "cert", "key", "crl", "certificateCompression"];
 
 export const tlsOptionNames = [
   "passphrase",
@@ -54,6 +54,7 @@ export const tlsOptionNames = [
   "sessionTimeout",
   "sigalgs",
   "ecdhCurve",
+  "certificateCompression",
 ];
 
 const socketOptionNames = [
@@ -104,7 +105,7 @@ const socketHandlerArguments: Readonly<Record<string, readonly b.PlaceLike[]>> =
 const dataOfServer = [b.nativeCell(socketDataCell), b.undefined];
 
 // SocketConfig.bind.ts and SSLConfig.bind.ts: a dictionary. Each member is read under its name and is of its type or refused, but these:
-// `hostname`, `host` and `port` are converted, so is a String object as `binaryType`, and `ca`, `cert`, `key` and `crl` of `tls` may be a sequence, which is iterated.
+// `hostname`, `host` and `port` are converted, so is a String object as `binaryType`, and `ca`, `cert`, `key` and `crl` of `tls` may be a sequence, which is iterated, as `certificateCompression` is.
 // Listener.rs describes a `secureContext` that is none in its message: whatever is there may be printed.
 export const socketOptions = [
   b.storedIn(b.nativeCell(socketOptionsCell)),

@@ -120,6 +120,7 @@ pub struct BunSocketContextOptions {
     pub allow_partial_trust_chain: i32,
     pub sigalgs: *const c_char,
     pub ecdh_curve: *const c_char,
+    pub cert_compression: u32,
 }
 
 impl Default for BunSocketContextOptions {
@@ -151,6 +152,7 @@ impl Default for BunSocketContextOptions {
             allow_partial_trust_chain: 0,
             sigalgs: ptr::null(),
             ecdh_curve: ptr::null(),
+            cert_compression: 0,
         }
     }
 }
@@ -264,6 +266,7 @@ impl BunSocketContextOptions {
         h.update(bun_core::bytes_of(&self.allow_partial_trust_chain));
         feed_z(&mut h, self.sigalgs);
         feed_z(&mut h, self.ecdh_curve);
+        h.update(bun_core::bytes_of(&self.cert_compression));
         let mut out = [0u8; 32];
         h.final_(&mut out);
         out

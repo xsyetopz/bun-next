@@ -35,6 +35,8 @@ pub struct SSLConfig {
     pub allow_partial_trust_chain: bool,
     pub sigalgs: Option<SensitiveCString>,
     pub ecdh_curve: Option<SensitiveCString>,
+    /// RFC 8879 algorithms, packed as `us_bun_socket_context_options_t::cert_compression`; 0 = disabled.
+    pub cert_compression: u32,
     /// Minimum/maximum TLS protocol version (TLS1_VERSION..TLS1_3_VERSION); 0 = unset/default.
     pub ssl_min_version: i32,
     pub ssl_max_version: i32,
@@ -109,6 +111,7 @@ impl SSLConfig {
         allow_partial_trust_chain: false,
         sigalgs: None,
         ecdh_curve: None,
+        cert_compression: 0,
         ssl_min_version: 0,
         ssl_max_version: 0,
         request_cert: 0,
@@ -216,6 +219,7 @@ impl SSLConfig {
         if let Some(ecdh_curve) = &self.ecdh_curve {
             ctx_opts.ecdh_curve = ecdh_curve.as_ptr();
         }
+        ctx_opts.cert_compression = self.cert_compression;
         if let Some(crl) = &self.crl {
             ctx_opts.crl = crl.as_ptr().cast();
             ctx_opts.crl_count = crl.len() as u32;
@@ -262,6 +266,7 @@ impl SSLConfig {
             && self.allow_partial_trust_chain == other.allow_partial_trust_chain
             && self.sigalgs == other.sigalgs
             && self.ecdh_curve == other.ecdh_curve
+            && self.cert_compression == other.cert_compression
             && self.ssl_min_version == other.ssl_min_version
             && self.ssl_max_version == other.ssl_max_version
             && self.request_cert == other.request_cert
@@ -318,6 +323,7 @@ impl SSLConfig {
         hasher.update(&[self.allow_partial_trust_chain as u8]);
         hash_cstr!(sigalgs);
         hash_cstr!(ecdh_curve);
+        hasher.update(&self.cert_compression.to_ne_bytes());
         hasher.update(&self.ssl_min_version.to_ne_bytes());
         hasher.update(&self.ssl_max_version.to_ne_bytes());
         hasher.update(&self.request_cert.to_ne_bytes());
@@ -370,6 +376,7 @@ impl Clone for SSLConfig {
             allow_partial_trust_chain: self.allow_partial_trust_chain,
             sigalgs: self.sigalgs.clone(),
             ecdh_curve: self.ecdh_curve.clone(),
+            cert_compression: self.cert_compression,
             ssl_min_version: self.ssl_min_version,
             ssl_max_version: self.ssl_max_version,
             request_cert: self.request_cert,

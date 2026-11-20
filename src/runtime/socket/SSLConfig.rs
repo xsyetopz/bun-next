@@ -164,6 +164,7 @@ impl SSLConfigFromJs for SSLConfig {
             (bytes.slice() != b"auto").then(|| SensitiveCString::new(bytes.slice()))
         });
 
+        let cert_compression = pack_cert_compression(generated.certificate_compression.as_deref().unwrap_or_default());
         let ca = handle_file_for_field(global, "ca", &generated.ca)?;
         let cert = handle_file_for_field(global, "cert", &generated.cert)?;
         let key = handle_file_for_field(global, "key", &generated.key)?;
@@ -191,6 +192,7 @@ impl SSLConfigFromJs for SSLConfig {
             || generated.ssl_max_version != 0
             || sigalgs.is_some()
             || ecdh_curve.is_some()
+            || cert_compression != 0
             || generated.session_timeout != 0
             || generated.allow_partial_trust_chain
             || key_file_name.is_some()
@@ -226,6 +228,7 @@ impl SSLConfigFromJs for SSLConfig {
             allow_partial_trust_chain: generated.allow_partial_trust_chain,
             sigalgs,
             ecdh_curve,
+            cert_compression,
             ssl_min_version: generated.ssl_min_version,
             ssl_max_version: generated.ssl_max_version,
             request_cert: generated.request_cert as i32,
@@ -454,3 +457,23 @@ extern "C" fn Bun__WebSocket__parseSSLConfig(
 /// hands the pointer off to an upgrade client.
 #[unsafe(no_mangle)]
 extern "C" fn Bun__WebSocket__freeSSLConfig(_: Option<Box<bun_http::ssl_config::SSLConfig>>) {}
+
+/// Packs the algorithms as `us_bun_socket_context_options_t::cert_compression` expects, keeping the first of each.
+fn pack_cert_compression(algorithms: &[generated::CertificateCompressionAlgorithm]) -> u32 {
+    use generated::CertificateCompressionAlgorithm as Algorithm;
+    let mut packed = 0u32;
+    let mut count = 0u32;
+    for algorithm in algorithms {
+        let id: u32 = match algorithm {
+            Algorithm::Zlib => 1,
+            Algorithm::Brotli => 2,
+            Algorithm::Zstd => 3,
+        };
+        if (1..=count).any(|i| (packed >> (8 * i)) & 0xff == id) {
+            continue;
+        }
+        count += 1;
+        packed |= id << (8 * count);
+    }
+    packed | count
+}

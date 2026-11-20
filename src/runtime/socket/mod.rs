@@ -33,6 +33,7 @@ pub(crate) mod windows_named_pipe;
 pub(crate) mod windows_named_pipe_context;
 
 mod bundled_root_certs;
+mod cert_compression;
 mod cert_files;
 #[cfg(all(unix, not(target_vendor = "apple")))]
 mod system_certs;

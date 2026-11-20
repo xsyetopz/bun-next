@@ -6840,3 +6840,64 @@ describe.concurrent("a handler that closes its socket and then waits for a promi
     });
   });
 });
+
+describe("tls.certificateCompression", () => {
+  // Bytes the server sends until the client's handshake finishes, measured by a TCP proxy between them.
+  async function serverHandshakeBytes(algorithms: ("zlib" | "brotli" | "zstd")[] | undefined) {
+    const cert = Array(20).fill(tls.cert).join("\n");
+    using server = Bun.listen({
+      hostname: "127.0.0.1",
+      port: 0,
+      tls: { cert, key: tls.key, certificateCompression: algorithms },
+      socket: { data() {} },
+    });
+    let fromServer: net.Socket | undefined;
+    const proxy = net.createServer(client => {
+      fromServer = net.connect(server.port, "127.0.0.1");
+      client.pipe(fromServer).pipe(client);
+      client.on("error", () => {});
+      fromServer.on("error", () => {});
+    });
+    proxy.listen(0, "127.0.0.1");
+    await once(proxy, "listening");
+    const { promise, resolve, reject } = Promise.withResolvers<void>();
+    const client = await connect({
+      hostname: "127.0.0.1",
+      port: (proxy.address() as net.AddressInfo).port,
+      tls: { rejectUnauthorized: false, certificateCompression: algorithms },
+      socket: {
+        handshake: () => resolve(),
+        connectError: (_, error) => reject(error),
+        error: (_, error) => reject(error),
+        data() {},
+      },
+    });
+    await promise;
+    const bytes = fromServer!.bytesRead;
+    client.end();
+    proxy.close();
+    return bytes;
+  }
+
+  it("shrinks the server's certificate chain with each algorithm", async () => {
+    const baseline = await serverHandshakeBytes(undefined);
+    const ratios: Record<string, boolean> = {};
+    for (const algorithm of ["zlib", "brotli", "zstd"] as const) {
+      ratios[algorithm] = (await serverHandshakeBytes([algorithm])) / baseline < 0.5;
+    }
+    expect(ratios).toEqual({ zlib: true, brotli: true, zstd: true });
+  });
+
+  it("is refused unless it lists known algorithms", () => {
+    for (const certificateCompression of ["zlib", ["lzma"], [1]]) {
+      expect(() =>
+        Bun.listen({
+          hostname: "127.0.0.1",
+          port: 0,
+          tls: { cert: tls.cert, key: tls.key, certificateCompression },
+          socket: { data() {} },
+        }),
+      ).toThrow(TypeError);
+    }
+  });
+});

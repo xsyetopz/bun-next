@@ -20,6 +20,9 @@ export const ALPNProtocols = b.union({
   buffer: b.bufferSource.arrayBuffer,
 });
 
+/** RFC 8879 certificate compression algorithms. */
+export const CertificateCompressionAlgorithm = b.enumeration(["zlib", "brotli", "zstd"]);
+
 export const TLSOptions = b.dictionary(
   {
     passphrase: b.string.nullable,
@@ -46,6 +49,7 @@ export const TLSOptions = b.dictionary(
     sessionTimeout: b.i32.allowBigInt.default(0),
     sigalgs: b.string.nullable,
     ecdhCurve: b.string.nullable,
+    certificateCompression: b.array(CertificateCompressionAlgorithm).optional,
   },
   { fromJS: true },
 );

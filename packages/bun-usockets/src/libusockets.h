@@ -532,6 +532,10 @@ struct us_bun_socket_context_options_t {
     const char *sigalgs;
     /* Colon-separated named-group list applied via SSL_CTX_set1_groups_list. */
     const char *ecdh_curve;
+    /* RFC 8879 certificate compression, packed as in Node.js: bits 0-7 hold the
+     * count (0 disables it), and each next byte an algorithm ID in preference
+     * order (1 zlib, 2 brotli, 3 zstd). */
+    unsigned int cert_compression;
 };
 
 enum create_bun_socket_error_t {

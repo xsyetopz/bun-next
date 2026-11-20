@@ -5105,6 +5105,13 @@ declare module "bun" {
     lowMemoryMode?: boolean;
 
     /**
+     * RFC 8879 certificate compression algorithms, most preferred first. A server compresses its
+     * certificate chain with the first one the client also lists. Only TLS 1.3 handshakes use it.
+     * @default [] (disabled)
+     */
+    certificateCompression?: Array<"zlib" | "brotli" | "zstd">;
+
+    /**
      * If set to `false`, any certificate is accepted.
      *
      * For a server, the default is `true`. `$NODE_TLS_REJECT_UNAUTHORIZED` does not change it.
