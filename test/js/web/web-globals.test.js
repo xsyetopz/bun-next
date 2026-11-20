@@ -457,7 +457,23 @@ test("navigator", () => {
 });
 
 // https://github.com/oven-sh/bun/issues/21585
-test.concurrent.each(["userAgent", "platform", "hardwareConcurrency"])(
+test("navigator.language is the default locale and languages a frozen list of it", () => {
+  const { language, languages } = navigator;
+  expect({
+    tag: new Intl.Locale(language).toString(),
+    languages,
+    frozen: Object.isFrozen(languages),
+    same: navigator.languages === languages,
+  }).toEqual({
+    tag: language,
+    languages: [language],
+    frozen: true,
+    same: true,
+  });
+  expect(language).toBe(new Intl.DateTimeFormat().resolvedOptions().locale);
+});
+
+test.concurrent.each(["userAgent", "platform", "hardwareConcurrency", "language", "languages"])(
   "navigator.%s is a getter-only accessor",
   async key => {
     // Spawn a fresh process so we don't mutate the test runner's own navigator object.

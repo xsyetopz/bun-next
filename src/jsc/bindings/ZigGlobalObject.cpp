@@ -13,6 +13,7 @@
 #include "wtf/text/Base64.h"
 #include "JavaScriptCore/BuiltinNames.h"
 #include "JavaScriptCore/CallData.h"
+#include "JavaScriptCore/IntlObject.h"
 #include "JavaScriptCore/TopExceptionScope.h"
 #include "JavaScriptCore/ClassInfo.h"
 #include "JavaScriptCore/CodeBlock.h"
@@ -2314,6 +2315,17 @@ JSC_DEFINE_HOST_FUNCTION(functionNavigatorGetPlatform, (JSC::JSGlobalObject * gl
 #endif
 }
 
+// Node.js reads ICU's default locale once and hands out the same frozen array each time.
+JSC_DEFINE_HOST_FUNCTION(functionNavigatorGetLanguages, (JSC::JSGlobalObject * globalObject, JSC::CallFrame*))
+{
+    return JSValue::encode(defaultGlobalObject(globalObject)->navigatorLanguages());
+}
+
+JSC_DEFINE_HOST_FUNCTION(functionNavigatorGetLanguage, (JSC::JSGlobalObject * globalObject, JSC::CallFrame*))
+{
+    return JSValue::encode(defaultGlobalObject(globalObject)->navigatorLanguages()->getDirectIndex(globalObject, 0));
+}
+
 JSC_DEFINE_HOST_FUNCTION(functionNavigatorGetHardwareConcurrency, (JSC::JSGlobalObject*, JSC::CallFrame*))
 {
     return JSValue::encode(JSC::jsNumber(WTF::numberOfProcessorCores()));
@@ -3098,16 +3110,26 @@ void GlobalObject::finishCreation(VM& vm)
              JSC::JSGlobalObject* globalObject = init.owner;
              unsigned accessorAttributes = PropertyAttribute::Accessor | 0;
 
-             JSC::JSObject* obj = JSC::constructEmptyObject(globalObject, globalObject->objectPrototype(), 4);
+             JSC::JSObject* obj = JSC::constructEmptyObject(globalObject, globalObject->objectPrototype(), 6);
 
              obj->putDirectNativeIntrinsicGetter(init.vm, globalObject, JSC::Identifier::fromString(init.vm, "userAgent"_s), functionNavigatorGetUserAgent, JSC::NoIntrinsic, accessorAttributes);
              obj->putDirectNativeIntrinsicGetter(init.vm, globalObject, JSC::Identifier::fromString(init.vm, "platform"_s), functionNavigatorGetPlatform, JSC::NoIntrinsic, accessorAttributes);
              obj->putDirectNativeIntrinsicGetter(init.vm, globalObject, JSC::Identifier::fromString(init.vm, "hardwareConcurrency"_s), functionNavigatorGetHardwareConcurrency, JSC::NoIntrinsic, accessorAttributes);
+             obj->putDirectNativeIntrinsicGetter(init.vm, globalObject, JSC::Identifier::fromString(init.vm, "language"_s), functionNavigatorGetLanguage, JSC::NoIntrinsic, accessorAttributes);
+             obj->putDirectNativeIntrinsicGetter(init.vm, globalObject, JSC::Identifier::fromString(init.vm, "languages"_s), functionNavigatorGetLanguages, JSC::NoIntrinsic, accessorAttributes);
 
              obj->putDirect(init.vm, init.vm.propertyNames->toStringTagSymbol,
                  jsNontrivialString(init.vm, "Navigator"_s), PropertyAttribute::DontEnum | PropertyAttribute::ReadOnly);
 
              init.set(obj);
+         } },
+        { OBJECT_OFFSETOF(GlobalObject, m_navigatorLanguages), [](const LazyProperty<JSGlobalObject, JSObject>::Initializer& init) {
+             String locale = JSC::defaultLocale(init.owner);
+             MarkedArgumentBuffer args;
+             args.append(JSC::jsString(init.vm, locale.isEmpty() ? String("en-US"_s) : locale));
+             auto* languages = JSC::constructArray(init.owner, static_cast<JSC::ArrayAllocationProfile*>(nullptr), args);
+             languages->freeze(init.vm);
+             init.set(languages);
          } },
         { OBJECT_OFFSETOF(GlobalObject, m_bunObject), [](const LazyProperty<JSGlobalObject, JSObject>::Initializer& init) {
              JSObject* bunObject = Bun::createBunObject(init.vm, init.owner);

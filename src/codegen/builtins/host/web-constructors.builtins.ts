@@ -952,6 +952,8 @@ export default b.declarations(
     userAgent: describesMachine(b.string),
     platform: describesMachine(b.string),
     hardwareConcurrency: describesMachine(b.f64),
+    language: describesMachine(b.string),
+    languages: describesMachine(b.object),
     "@@toStringTag": b.property(b.string),
   }),
   b.inherits("navigator", "Object.prototype"),
