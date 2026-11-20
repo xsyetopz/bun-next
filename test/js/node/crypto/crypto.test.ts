@@ -517,3 +517,66 @@ it("should send cipher events in the right order", async () => {
     ``,
   ]);
 });
+
+describe("crypto.createMac", () => {
+  const key = Buffer.from("000102030405060708090a0b0c0d0e0f", "hex");
+  const data = Buffer.from("The quick brown fox jumps over the lazy dog");
+
+  it("lists the supported MACs", () => {
+    expect(crypto.getMacs()).toEqual(["gmac", "hmac"]);
+    expect((crypto as any).Mac).toBeUndefined();
+  });
+
+  it("computes HMAC as createHmac does", () => {
+    const expected = crypto.createHmac("sha256", key).update(data).digest();
+    const mac = crypto.createMac("HMAC", crypto.createSecretKey(key), { digest: "sha256" });
+    expect(mac).toBeInstanceOf(require("node:stream").Transform);
+    expect(mac.update(data.subarray(0, 10)).update(data.subarray(10)).final("hex")).toBe(expected.toString("hex"));
+    expect(() => mac.update(data)).toThrow(expect.objectContaining({ code: "ERR_CRYPTO_MAC_FINALIZED" }));
+  });
+
+  it("computes GMAC from a GCM cipher", () => {
+    const mac = crypto.createMac("gmac", Buffer.alloc(16), { cipher: "aes-128-gcm", iv: Buffer.alloc(12) });
+    expect(mac.final("hex")).toBe("58e2fccefa7e3061367f1d57a4e7455a");
+  });
+
+  it("emits one tag when used as a stream", async () => {
+    const mac = crypto.createMac("hmac", key, { digest: "sha256" });
+    const chunks: Buffer[] = [];
+    mac.on("data", chunk => chunks.push(chunk));
+    mac.end(data);
+    await require("node:stream/promises").finished(mac);
+    expect(chunks).toEqual([crypto.createHmac("sha256", key).update(data).digest()]);
+  });
+
+  it("validates its arguments as node does", () => {
+    const code = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (error: any) {
+        return error.code;
+      }
+    };
+    expect([
+      code(() => crypto.createMac("", key)),
+      code(() => crypto.createMac("nope", key)),
+      code(() => crypto.createMac("hmac", key)),
+      code(() => crypto.createMac("hmac", key, { digest: "nope" })),
+      code(() => crypto.createMac("hmac", key, { digest: "sha256", iv: Buffer.alloc(12) })),
+      code(() => crypto.createMac("hmac", "key", { digest: "sha256" })),
+      code(() => crypto.createMac("gmac", key, { cipher: "aes-128-cbc", iv: Buffer.alloc(12) })),
+      code(() => crypto.createMac("hmac", key, { outputLength: -1 })),
+      code(() => crypto.createMac("hmac", key, { digest: "sha256" }).update("0", "hex")),
+    ]).toEqual([
+      "ERR_INVALID_ARG_VALUE",
+      "ERR_CRYPTO_INVALID_MAC",
+      "ERR_INVALID_ARG_VALUE",
+      "ERR_OSSL_EVP_UNSUPPORTED",
+      "ERR_INVALID_ARG_VALUE",
+      "ERR_INVALID_ARG_TYPE",
+      "ERR_INVALID_ARG_VALUE",
+      "ERR_OUT_OF_RANGE",
+      "ERR_INVALID_ARG_VALUE",
+    ]);
+  });
+});

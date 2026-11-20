@@ -469,6 +469,12 @@ crypto_exports.createHmac = function createHmac(
 
 crypto_exports.getHashes = getHashes;
 
+{
+  const { createMac, getMacs } = require("internal/crypto/mac");
+  crypto_exports.createMac = createMac;
+  crypto_exports.getMacs = getMacs;
+}
+
 crypto_exports.randomInt = randomInt;
 crypto_exports.randomFill = randomFill;
 crypto_exports.randomFillSync = randomFillSync;
