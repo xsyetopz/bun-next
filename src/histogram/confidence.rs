@@ -4,6 +4,7 @@
 //! https://github.com/nodejs/node/blob/v26.3.0/src/histogram.cc
 
 use crate::Histogram;
+use crate::beta::Beta;
 
 impl Histogram {
     /// The mean, and the bounds that it lies between with probability `confidence`, from Student's t-distribution.
@@ -69,14 +70,14 @@ pub(crate) fn student_t_cdf(t: f64, df: f64) -> f64 {
     let squared = t * t;
     let upper = t >= 0.0;
     if squared < df {
-        let beta = regularized_incomplete_beta(0.5, df / 2.0, squared / (df + squared));
+        let beta = Beta::new(0.5, df / 2.0).cdf(squared / (df + squared));
         return if upper {
             0.5 + 0.5 * beta
         } else {
             0.5 - 0.5 * beta
         };
     }
-    let beta = regularized_incomplete_beta(df / 2.0, 0.5, df / (df + squared));
+    let beta = Beta::new(df / 2.0, 0.5).cdf(df / (df + squared));
     if upper { 1.0 - 0.5 * beta } else { 0.5 * beta }
 }
 
@@ -105,49 +106,5 @@ fn binomial_cdf(rank: u64, n: u64, p: f64) -> f64 {
     if rank > n {
         return 1.0;
     }
-    regularized_incomplete_beta((n - rank + 1) as f64, rank as f64, 1.0 - p)
-}
-
-/// The chance that a variable of the beta distribution with shapes `a` and `b` is at most `x`.
-fn regularized_incomplete_beta(a: f64, b: f64, x: f64) -> f64 {
-    if x <= 0.0 {
-        return 0.0;
-    }
-    if x >= 1.0 {
-        return 1.0;
-    }
-    let log_front =
-        (a + b).ln_gamma().0 - a.ln_gamma().0 - b.ln_gamma().0 + a * x.ln() + b * (1.0 - x).ln();
-    let front = log_front.exp();
-    // The continued fraction converges fastest below the mean, so above it the other tail is computed.
-    if x < (a + 1.0) / (a + b + 2.0) {
-        front * beta_continued_fraction(a, b, x) / a
-    } else {
-        1.0 - front * beta_continued_fraction(b, a, 1.0 - x) / b
-    }
-}
-
-/// Lentz's method, as in Numerical Recipes in C, 2nd edition, section 6.4.
-fn beta_continued_fraction(a: f64, b: f64, x: f64) -> f64 {
-    const TINY: f64 = 1e-30;
-    let away_from_0 = |value: f64| if value.abs() < TINY { TINY } else { value };
-    let mut c = 1.0;
-    let mut d = 1.0 / away_from_0(1.0 - (a + b) * x / (a + 1.0));
-    let mut fraction = d;
-    for m in 1..=200 {
-        let m = f64::from(m);
-        let even = m * (b - m) * x / ((a - 1.0 + 2.0 * m) * (a + 2.0 * m));
-        let odd = -(a + m) * (a + b + m) * x / ((a + 2.0 * m) * (a + 1.0 + 2.0 * m));
-        let mut delta = 1.0;
-        for term in [even, odd] {
-            d = 1.0 / away_from_0(1.0 + term * d);
-            c = away_from_0(1.0 + term / c);
-            delta = d * c;
-            fraction *= delta;
-        }
-        if (delta - 1.0).abs() <= 3e-12 {
-            break;
-        }
-    }
-    fraction
+    Beta::new((n - rank + 1) as f64, rank as f64).cdf(1.0 - p)
 }

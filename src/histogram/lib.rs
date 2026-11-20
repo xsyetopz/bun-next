@@ -25,6 +25,7 @@
     clippy::unreachable
 )]
 
+mod beta;
 mod buckets;
 mod compare;
 mod confidence;
