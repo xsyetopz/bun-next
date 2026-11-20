@@ -6,7 +6,9 @@
 #include "NodeV8.h"
 #include "ZigGlobalObject.h"
 
+#include <JavaScriptCore/HeapIterationScope.h>
 #include <JavaScriptCore/JSArray.h>
+#include <JavaScriptCore/MarkedSpaceInlines.h>
 #include <JavaScriptCore/JSCJSValue.h>
 #include <JavaScriptCore/JSObject.h>
 #include <JavaScriptCore/JSString.h>
@@ -94,6 +96,50 @@ JSC_DEFINE_HOST_FUNCTION(functionStopGCProfiler, (JSGlobalObject * globalObject,
     return JSValue::encode(result);
 }
 
+// Node's PrototypeChainHas predicate: objects of this realm with `prototype` on their
+// prototype chain, after a full collection. The walk reads prototypes directly because
+// the heap can't run JS (proxy traps) or allocate while it is being iterated.
+JSC_DEFINE_HOST_FUNCTION(functionQueryObjects, (JSGlobalObject * globalObject, CallFrame* callFrame))
+{
+    auto& vm = JSC::getVM(globalObject);
+    auto scope = DECLARE_THROW_SCOPE(vm);
+
+    JSValue prototype = callFrame->argument(0);
+    if (!prototype.isObject())
+        return JSValue::encode(constructEmptyArray(globalObject, nullptr));
+
+    vm.heap.collectNow(JSC::Sync, JSC::CollectionScope::Full);
+
+    MarkedArgumentBuffer matches;
+    {
+        HeapIterationScope iterationScope(vm.heap);
+        vm.heap.objectSpace().forEachLiveCell(iterationScope, [&](HeapCell* cell, HeapCell::Kind kind) {
+            if (!isJSCellKind(kind) || !static_cast<JSCell*>(cell)->isObject())
+                return IterationStatus::Continue;
+            JSObject* object = asObject(static_cast<JSCell*>(cell));
+            if (object->globalObject() != globalObject)
+                return IterationStatus::Continue;
+            for (JSObject* current = object; !current->structure()->typeInfo().overridesGetPrototype();) {
+                JSValue next = current->getPrototypeDirect();
+                if (!next.isObject())
+                    break;
+                if (next == prototype) {
+                    matches.append(object);
+                    break;
+                }
+                current = asObject(next);
+            }
+            return IterationStatus::Continue;
+        });
+    }
+    if (matches.hasOverflowed()) [[unlikely]] {
+        throwOutOfMemoryError(globalObject, scope);
+        return {};
+    }
+
+    RELEASE_AND_RETURN(scope, JSValue::encode(constructArray(globalObject, static_cast<ArrayAllocationProfile*>(nullptr), matches)));
+}
+
 JSC::JSValue createNodeV8Binding(JSC::JSGlobalObject* globalObject)
 {
     auto& vm = JSC::getVM(globalObject);
@@ -102,6 +148,7 @@ JSC::JSValue createNodeV8Binding(JSC::JSGlobalObject* globalObject)
     object->putDirectNativeFunction(vm, globalObject, JSC::Identifier::fromString(vm, "startGCProfiler"_s), 0, functionStartGCProfiler, ImplementationVisibility::Public, JSC::NoIntrinsic, 0);
     object->putDirectNativeFunction(vm, globalObject, JSC::Identifier::fromString(vm, "stopGCProfiler"_s), 1, functionStopGCProfiler, ImplementationVisibility::Public, JSC::NoIntrinsic, 0);
     object->putDirectNativeFunction(vm, globalObject, JSC::Identifier::fromString(vm, "discardGCProfiler"_s), 1, functionDiscardGCProfiler, ImplementationVisibility::Public, JSC::NoIntrinsic, 0);
+    object->putDirectNativeFunction(vm, globalObject, JSC::Identifier::fromString(vm, "queryObjects"_s), 1, functionQueryObjects, ImplementationVisibility::Public, JSC::NoIntrinsic, 0);
     return object;
 }
 

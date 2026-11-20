@@ -2,7 +2,8 @@
 
 // This is a stub! None of this is actually implemented yet.
 const { hideFromStack, throwNotImplemented } = require("internal/shared");
-const { validateString, validateOneOf } = require("internal/validators");
+const { validateFunction, validateObject, validateString, validateOneOf } = require("internal/validators");
+const { kEmptyObject } = require("internal/shared");
 const { isDataView, isAnyArrayBuffer } = require("node:util/types");
 const jsc: typeof import("bun:jsc") = require("bun:jsc");
 interface GCEvent {
@@ -21,12 +22,14 @@ const {
   startGCProfiler,
   stopGCProfiler,
   discardGCProfiler,
+  queryObjects: queryObjectsOfPrototype,
 }: {
   isStringOneByteRepresentation(content: string): boolean;
   /** The session's id. */
   startGCProfiler(): number;
   stopGCProfiler(session: number): GCEvent[];
   discardGCProfiler(session: number): void;
+  queryObjects(prototype: unknown): object[];
 } = $cpp("NodeV8.cpp", "Bun::createNodeV8Binding");
 
 const setNewContextsHaveGC = $newCppFunction("NodeVM.cpp", "jsFunctionSetNewContextsHaveGC", 1);
@@ -405,6 +408,28 @@ function writeHeapSnapshot(path, _options) {
 function setHeapSnapshotNearHeapLimit() {
   notimpl("setHeapSnapshotNearHeapLimit");
 }
+let warnedQueryObjects = false;
+function queryObjects(ctor: Function, options: { format?: string } = kEmptyObject) {
+  validateFunction(ctor, "constructor");
+  if (options !== kEmptyObject) validateObject(options, "options");
+  const format = options.format || "count";
+  if (format !== "count" && format !== "summary") throw $ERR_INVALID_ARG_VALUE("options.format", format);
+  if (!warnedQueryObjects) {
+    warnedQueryObjects = true;
+    process.emitWarning(
+      "v8.queryObjects() is an experimental feature and might change at any time",
+      "ExperimentalWarning",
+    );
+  }
+  // Like the DevTools console API, this only reads `.prototype`.
+  const objects = queryObjectsOfPrototype(ctor.prototype);
+  if (format === "count") return objects.length;
+  const { inspect } = require("node:util");
+  const summary: string[] = [];
+  for (let i = 0; i < objects.length; i++) summary.push(inspect(objects[i], { depth: 0 }));
+  return summary;
+}
+
 function throwNotBuildingSnapshot() {
   throw $ERR_NOT_BUILDING_SNAPSHOT("Operation cannot be invoked when not building startup snapshot");
 }
@@ -452,6 +477,7 @@ export default {
   writeHeapSnapshot,
   setHeapSnapshotNearHeapLimit,
   promiseHooks,
+  queryObjects,
   startupSnapshot,
   Deserializer,
   Serializer,

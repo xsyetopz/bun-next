@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { bunEnv, bunExe } from "harness";
-import { GCProfiler, isStringOneByteRepresentation } from "node:v8";
+import { inspect } from "node:util";
+import { GCProfiler, isStringOneByteRepresentation, queryObjects } from "node:v8";
+import { runInNewContext } from "node:vm";
 
 describe("v8.isStringOneByteRepresentation", () => {
   test("rejects non-string arguments", () => {
@@ -39,6 +41,51 @@ test("loading node:v8 does not call a replaced Function.prototype.bind", async (
   });
   const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
   expect({ stdout, stderr, exitCode }).toEqual({ stdout: "0\n", stderr: "", exitCode: 0 });
+});
+
+describe("v8.queryObjects", () => {
+  test("validates its arguments", () => {
+    expect(() => queryObjects({} as any)).toThrow(expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }));
+    expect(() => queryObjects(class {}, null as any)).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_ARG_TYPE" }),
+    );
+    expect(() => queryObjects(class {}, { format: "all" as any })).toThrow(
+      expect.objectContaining({ code: "ERR_INVALID_ARG_VALUE" }),
+    );
+  });
+
+  test("finds the live objects whose prototype chain has ctor.prototype", () => {
+    class Base {
+      label = "base";
+    }
+    class Child extends Base {}
+    const objects = [new Base(), new Child()];
+    expect(queryObjects(Base)).toBe(3);
+    expect(queryObjects(Child, { format: "summary" })).toEqual([inspect(objects[1], { depth: 0 })]);
+    expect(queryObjects(Base, { format: "summary" }).sort()).toEqual(
+      [Child.prototype, ...objects].map(object => inspect(object, { depth: 0 })).sort(),
+    );
+  });
+
+  test("skips other realms and does not run proxy traps", () => {
+    class Kept {}
+    let trapped = false;
+    const proxy = new Proxy(
+      {},
+      {
+        getPrototypeOf() {
+          trapped = true;
+          return Kept.prototype;
+        },
+      },
+    );
+    const foreign = runInNewContext("Object.create(proto)", { proto: Kept.prototype });
+    expect(queryObjects(Kept)).toBe(0);
+    expect(trapped).toBe(false);
+    const kept = new Kept();
+    expect(queryObjects(Kept)).toBe(1);
+    expect([proxy, foreign, kept]).toHaveLength(3);
+  });
 });
 
 describe("v8.GCProfiler", () => {
