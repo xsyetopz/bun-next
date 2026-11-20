@@ -184,6 +184,8 @@ public:
     }
 
     bool hasEvaluated = false;
+    // `module.loaded` stays false while the body runs and after it throws, as in Node; hasEvaluated is already true then.
+    bool bodyIncomplete = false;
 
     JSCommonJSModule(JSC::VM& vm, JSC::Structure* structure, JSC::JSString* id, JSC::JSValue filename, JSC::JSString* dirname)
         : Base(vm, structure)

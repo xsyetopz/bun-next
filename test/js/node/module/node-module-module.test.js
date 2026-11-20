@@ -1341,6 +1341,27 @@ console.log("survived", require("./late.js"));`,
     expect(dn).toBe(path.dirname(filename));
   });
 
+  test("module.loaded is false while the body runs and after it throws", async () => {
+    using dir = tempDir("module-loaded", {
+      "main.js": `
+        const seen = [module.loaded];
+        const dep = require("./dep.js");
+        seen.push(dep.during, require.cache[require.resolve("./dep.js")].loaded);
+        try { require("./throws.js"); } catch {}
+        seen.push(require.cache[require.resolve("./throws.js")]?.loaded ?? "evicted");
+        module.loaded = true;
+        seen.push(module.loaded);
+        console.log(JSON.stringify(seen));
+      `,
+      "dep.js": "exports.during = module.loaded;",
+      "throws.js": "module.exports = module; throw new Error('boom');",
+    });
+    await using proc = Bun.spawn({ cmd: [bunExe(), "main.js"], env: bunEnv, cwd: String(dir), stderr: "pipe" });
+    const [stdout, stderr, exitCode] = await Promise.all([proc.stdout.text(), proc.stderr.text(), proc.exited]);
+    expect({ stdout: stdout.trim(), stderr }).toEqual({ stdout: '[false,false,true,"evicted",true]', stderr: "" });
+    expect(exitCode).toBe(0);
+  });
+
   test("Module.prototype.load runs the longest registered extension loader and marks the module loaded", () => {
     using dir = tempDir("module-load", {
       "a.js": "module.exports = { filename: __filename };",

@@ -405,8 +405,10 @@ static bool evaluateCommonJSModuleOnce(JSC::VM& vm, Zig::GlobalObject* globalObj
     //
     //    fn(exports, require, module, __filename, __dirname) { /* code */ }(exports, require, module, __filename, __dirname)
     //
+    moduleObject->bodyIncomplete = true;
     JSC::profiledCall(globalObject, ProfilingReason::API, fn, callData, moduleObject, args);
     RETURN_IF_EXCEPTION(scope, false);
+    moduleObject->bodyIncomplete = false;
     noteModuleLoadedForLint(globalObject, filename, moduleObject);
     RETURN_IF_EXCEPTION(scope, false);
 
@@ -873,7 +875,7 @@ JSC_DEFINE_CUSTOM_GETTER(getterLoaded, (JSC::JSGlobalObject * globalObject, JSC:
         return JSValue::encode(jsUndefined());
     }
 
-    return JSValue::encode(jsBoolean(thisObject->hasEvaluated));
+    return JSValue::encode(jsBoolean(thisObject->hasEvaluated && !thisObject->bodyIncomplete));
 }
 
 JSC_DEFINE_CUSTOM_SETTER(setterPaths,
@@ -947,6 +949,7 @@ JSC_DEFINE_CUSTOM_SETTER(setterLoaded,
         return false;
 
     thisObject->hasEvaluated = JSValue::decode(value).toBoolean(globalObject);
+    thisObject->bodyIncomplete = false;
 
     return true;
 }
