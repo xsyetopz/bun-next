@@ -451,6 +451,40 @@ describe("Channel", () => {
     const alive = refs.filter(ref => ref.deref() !== undefined).length;
     expect(alive).toBeLessThan(refs.length / 10);
   });
+
+  test("withStoreScope enters bound stores, publishes, and restores them on dispose", () => {
+    const dc = channel("withStoreScope");
+    const inactive = dc.withStoreScope(1);
+    expect({ dispose: typeof inactive[Symbol.dispose], keys: Object.keys(inactive) }).toEqual({
+      dispose: "function",
+      keys: [],
+    });
+
+    const a = new AsyncLocalStorage();
+    const b = new AsyncLocalStorage();
+    const log: unknown[] = [];
+    a.run("outerA", () => {
+      dc.bindStore(a);
+      dc.bindStore(b, data => ({ wrapped: data }));
+      const onMessage = data => log.push(["pub", data, a.getStore(), b.getStore()]);
+      dc.subscribe(onMessage);
+      {
+        using _scope = dc.withStoreScope("ctx");
+        log.push(["in", a.getStore(), b.getStore()]);
+      }
+      log.push(["out", a.getStore(), b.getStore()]);
+      dc.unsubscribe(onMessage);
+      dc.unbindStore(a);
+      dc.unbindStore(b);
+    });
+
+    expect(log).toEqual([
+      ["pub", "ctx", "ctx", { wrapped: "ctx" }],
+      ["in", "ctx", { wrapped: "ctx" }],
+      ["out", "outerA", undefined],
+    ]);
+    expect(dc.withStoreScope.length).toBe(0);
+  });
 });
 
 describe("TracingChannel", () => {

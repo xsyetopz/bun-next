@@ -2,6 +2,7 @@
 // Reference: https://github.com/nodejs/node/blob/fb47afc335ef78a8cef7eac52b8ee7f045300696/lib/diagnostics_channel.js
 
 const { validateFunction } = require("internal/validators");
+const { aggregateTwoErrors } = require("internal/errors");
 
 const SafeMap = Map;
 const SafeFinalizationRegistry = FinalizationRegistry;
@@ -14,6 +15,7 @@ const ArrayPrototypeSplice = Array.prototype.splice;
 const ObjectGetPrototypeOf = Object.getPrototypeOf;
 const ObjectSetPrototypeOf = Object.setPrototypeOf;
 const SymbolHasInstance = Symbol.hasInstance;
+const SymbolDispose = Symbol.dispose;
 const PromiseResolve = Promise.$resolve.bind(Promise);
 const PromiseReject = Promise.$reject.bind(Promise);
 const PromisePrototypeThen = (
@@ -105,6 +107,59 @@ function wrapStoreRun(store: Store, data: unknown, next: () => unknown, transfor
   };
 }
 
+function disposeStoreScopes(stack: Disposable[], error?: unknown, hasError = false) {
+  for (let i = stack.length - 1; i >= 0; i--) {
+    try {
+      stack[i][SymbolDispose]();
+    } catch (err) {
+      error = hasError ? aggregateTwoErrors(err as Error, error as Error) : err;
+      hasError = true;
+    }
+  }
+
+  if (hasError) throw error;
+}
+
+class RunStoresScope {
+  #stack: Disposable[] | undefined;
+
+  constructor(activeChannel: ActiveChannel, data: unknown) {
+    const stack: Disposable[] = [];
+
+    for (const entry of activeChannel._stores!.entries()) {
+      const store = entry[0];
+      const transform = entry[1];
+
+      let newContext = data;
+      if (transform) {
+        try {
+          newContext = transform(data);
+        } catch (err) {
+          process.nextTick(() => reportError(err));
+          continue;
+        }
+      }
+
+      try {
+        ArrayPrototypePush.$call(stack, store.withScope(newContext));
+      } catch (err) {
+        disposeStoreScopes(stack, err, true);
+      }
+    }
+
+    activeChannel.publish(data);
+    this.#stack = stack;
+  }
+
+  [SymbolDispose]() {
+    const stack = this.#stack;
+    if (stack !== undefined) {
+      this.#stack = undefined;
+      disposeStoreScopes(stack);
+    }
+  }
+}
+
 class ActiveChannel {
   _subscribers: Subscription[] | undefined;
   name!: ChannelName;
@@ -181,6 +236,10 @@ class ActiveChannel {
 
     return run();
   }
+
+  withStoreScope(data: unknown) {
+    return new RunStoresScope(this, data);
+  }
 }
 
 class Channel {
@@ -227,6 +286,10 @@ class Channel {
 
   runStores(data: unknown, fn: Traced, thisArg?: unknown, ...args: unknown[]) {
     return fn.$apply(thisArg, args);
+  }
+
+  withStoreScope() {
+    return { [SymbolDispose]() {} };
   }
 }
 
